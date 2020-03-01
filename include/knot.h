@@ -23,11 +23,14 @@ std::vector<uint8_t> serialize(const T&);
 template <typename T, typename IT>
 IT serialize(const T&, IT out);
 
+// In addition to as_tie(), deserialize requires that structs be constructible
+// from the types returned in as_tie().
+// Furthermore raw pointers and references aren't supported.
 template <typename T, typename IT>
-std::optional<std::decay_t<T>> deserialize(IT begin, IT end);
+std::optional<std::remove_const_t<T>> deserialize(IT begin, IT end);
 
 template <typename T, typename IT>
-std::optional<std::pair<std::decay_t<T>, IT>> deserialize_partial(IT begin, IT end);
+std::optional<std::pair<std::remove_const_t<T>, IT>> deserialize_partial(IT begin, IT end);
 
 template <typename T>
 std::string debug_string(const T&);
@@ -47,13 +50,13 @@ T from_tuple(std::tuple<Ts...>&&);
 template <typename T, typename F>
 void visit(const T&, F f);
 
-template <typename T, typename F, typename S>
-T accumulate(const S& t, F f, T init = {}) {
+template <typename Result, typename T, typename F>
+Result accumulate(const T& t, F f, Result acc = {}) {
   visit(t, [&](const auto& value) {
-    init = f(value, std::move(init));
+    acc = f(value, std::move(acc));
     return true;
   });
-  return init;
+  return acc;
 }
 
 namespace details {
@@ -76,13 +79,12 @@ inline constexpr bool is_pair_v = false;
 template <typename T1, typename T2>
 inline constexpr bool is_pair_v<std::pair<T1, T2>> = true;
 
-template <typename>
-inline constexpr bool is_pointer_v = false;
+template <typename T>
+inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
 template <typename T, typename Del>
 inline constexpr bool is_pointer_v<std::unique_ptr<T, Del>> = true;
 template <typename T>
 inline constexpr bool is_pointer_v<std::shared_ptr<T>> = true;
-// No support for raw pointers
 
 template <typename>
 inline constexpr bool is_tuple_v = false;
@@ -180,14 +182,9 @@ bool sum_type_index(const std::optional<T>& opt) {
   return static_cast<bool>(opt);
 }
 
-template <typename T, typename Del>
-bool sum_type_index(const std::unique_ptr<T, Del>& ptr) {
-  return static_cast<bool>(ptr);
-}
-
 template <typename T>
-bool sum_type_index(const std::shared_ptr<T>& ptr) {
-  return static_cast<bool>(ptr);
+std::enable_if_t<details::is_pointer_v<T>, bool> sum_type_index(const T& ptr) {
+  return ptr != nullptr;
 }
 
 template <typename... Ts>
@@ -246,7 +243,7 @@ std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, std:
                                                           std::index_sequence<Is...>) {
   std::array<std::optional<std::pair<Variant, IT>>, sizeof...(Is)> options{
       (index == Is ? deserialize_partial<std::variant_alternative_t<Is, Variant>>(begin, end) : std::nullopt)...};
-  return index >= sizeof...(Is) ? std::nullopt : options[index];
+  return index >= sizeof...(Is) ? std::nullopt : std::move(options[index]);
 }
 
 // Taken from boost::hash_combine
@@ -303,7 +300,7 @@ IT serialize(const Outer& t, IT out) {
 }
 
 template <typename T, typename IT>
-std::optional<std::decay_t<T>> deserialize(IT begin, IT end) {
+std::optional<std::remove_const_t<T>> deserialize(IT begin, IT end) {
   auto opt = deserialize_partial<T>(begin, end);
 
   if (!opt || opt->second != end) return std::nullopt;
@@ -312,9 +309,11 @@ std::optional<std::decay_t<T>> deserialize(IT begin, IT end) {
 }
 
 template <typename Outer, typename IT>
-std::optional<std::pair<std::decay_t<Outer>, IT>> deserialize_partial(IT begin, IT end) {
-  using T = std::decay_t<Outer>;
+std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT begin, IT end) {
+  using T = std::remove_const_t<Outer>;
 
+  static_assert(!std::is_reference_v<Outer>);
+  static_assert(!std::is_pointer_v<T>);
   static_assert(std::is_same_v<typename IT::value_type, uint8_t>);
   static_assert(details::is_knot_supported_type_v<T>);
 
@@ -452,8 +451,12 @@ template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
   static_assert(details::is_knot_supported_type_v<T>);
 
-  // visit the value
-  if (!visitor(t)) return;
+  // visit the value, if the function returns a value, stop recursing on false
+  if constexpr (std::is_same_v<void, decltype(visitor(t))>) {
+    visitor(t);
+  } else {
+    if (!visitor(t)) return;
+  }
 
   // Call visit recursively depending on type
   if constexpr (details::is_product_type_v<T>) {
