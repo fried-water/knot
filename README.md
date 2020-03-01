@@ -1,9 +1,9 @@
 # knot
 Utility framework to recursively visit regular composite types. This allows knot to implement a generic hash(), serialize(), deserialize(), lexicographic ordered and comparison operators, debug_string() (without member names). This can already be done with most composite types in the standard library: tuple, pair, variant,  optional, most range containers, etc. However, due to a lack of reflection in the language its impossible to visit the members of a struct. Some libraries such as [boost work around this using macros.](https://www.boost.org/doc/libs/1_72_0/libs/fusion/doc/html/fusion/adapted/define_struct.html)
 
-We require structs implement `as_tie(const T&)` that returns a tie of its members (or the subset that represent its identity).
+Instead knot require structs implement `as_tie(const T&)` that returns a tie of its members (or the subset that represent its identity).
 
-```
+```cpp
 struct Point : knot::Compareable {
   int x = 0;
   int y = 0;
@@ -24,7 +24,7 @@ void example(const Point& p) {
 
 In addition to structs with as_tie, knot also recusively supports most composite types in the standard language: tuple, pair, variant, optional, any range, unique/shared/raw ptr. In addition to the above functions knot also provides a higher level `visit()` and `accumulate()` function that traverse objects in a preorder traversal.
 
-```
+```cpp
 enum class Op {Add, Sub};
 
 struct BinaryExpr;

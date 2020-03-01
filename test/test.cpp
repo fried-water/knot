@@ -116,3 +116,22 @@ int main() {
   y2.h = nullptr;
   assert(y == y2);
 }
+/*
+X: (<5>, "abc", [3, 4, 5], 1)
+Y: ([(<5>, "abc", [3, 4, 5], 1)], [(<5>, "abc", [3, 4, 5], 1)], [(3, (<5>, "abc", [3, 4, 5], 1))], [(2, (<5>, "abc", [3, 4, 5], 1))], None, ((None, "", [], 0), 4), [(None, "", [], 0), (<5>, "abc", [3, 4, 5], 1)], <(None, "", [], 0)>, <(<5>, "abc", [3, 4, 5], 1)>)
+X hash: 15593058191117246053
+Y hash: 14279034135752118131
+Serialization X size: 40
+Serialization Y size: 365
+Y has 7 threes
+Y has 9 Xs
+1X
+St8optionalIiE
+i: 5
+NSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE: abc
+St6vectorIiSaIiEE
+i: 3
+i: 4
+i: 5
+3Day
+*/
