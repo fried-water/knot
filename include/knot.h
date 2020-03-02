@@ -41,12 +41,6 @@ std::ostream& debug_string(std::ostream&, const T&);
 template <typename T>
 std::size_t hash_value(const T&);
 
-template <typename T, typename... Ts>
-T from_tuple(const std::tuple<Ts...>&);
-
-template <typename T, typename... Ts>
-T from_tuple(std::tuple<Ts...>&&);
-
 template <typename T, typename F>
 void visit(const T&, F f);
 
@@ -132,10 +126,25 @@ struct is_reserveable<T, std::void_t<decltype(std::declval<T>().reserve(0))>> : 
 template <typename T>
 inline constexpr bool is_reserveable_v = is_reserveable<T>::value;
 
-template <typename T, typename T2>
+template <typename T, typename T2 = void>
 using tie_enable = std::enable_if_t<is_tieable_v<T>, T2>;
 
-template <typename>
+// Generic product type utilities (tuple, pair, tieable structs)
+
+template <typename, typename = void>
+struct as_tuple_type;
+
+template <typename First, typename Second>
+struct as_tuple_type<std::pair<First, Second>> {
+  using type = std::tuple<First, Second>;
+};
+
+template <typename... Ts>
+struct as_tuple_type<std::tuple<Ts...>> {
+  using type = std::tuple<Ts...>;
+};
+
+template <typename T>
 struct tuple_from_tie;
 
 template <typename... Ts>
@@ -144,9 +153,12 @@ struct tuple_from_tie<std::tuple<const Ts&...>> {
 };
 
 template <typename T>
-using tuple_from_tie_t = typename tuple_from_tie<T>::type;
+struct as_tuple_type<T, tie_enable<T>> {
+  using type = typename tuple_from_tie<decltype(as_tie(std::declval<T>()))>::type;
+};
 
-// Generic product type utilities (tuple, pair, tieable structs)
+template <typename T>
+using as_tuple_type_t = typename as_tuple_type<T>::type;
 
 template <typename T>
 struct product_type_size : std::tuple_size<decltype(as_tie(std::declval<T>()))> {};
@@ -173,6 +185,16 @@ auto as_tuple(const std::pair<T1, T2>& pair) {
 template <typename T>
 auto as_tuple(const T& tieable) {
   return as_tie(tieable);
+}
+
+template <typename T, typename Tuple, std::size_t... Is>
+T from_tuple_helper(Tuple&& t, std::index_sequence<Is...>) {
+  return T{std::get<Is>(std::forward<Tuple>(t))...};
+}
+
+template <typename Result, typename... Ts>
+Result from_tuple(std::tuple<Ts...>&& t) {
+  return from_tuple_helper<Result>(std::move(t), std::make_index_sequence<sizeof...(Ts)>{});
 }
 
 // Generic sum type utilities (variant, optional, pointers)
@@ -210,6 +232,38 @@ void sum_type_visit(const T& t, F f) {
   }
 }
 
+// Monadic optional wrapper for help with deserialize
+
+template <typename T>
+struct Monad;
+
+template <typename First, typename Second>
+struct Monad<std::optional<std::pair<First, Second>>> {
+  std::optional<std::pair<First, Second>> opt;
+
+  template <typename F>
+  auto and_then(F f) && {
+    using result_type = decltype(f(std::move(opt->first), std::move(opt->second)));
+    return Monad<result_type>{opt ? f(std::move(opt->first), std::move(opt->second)) : std::nullopt};
+  }
+
+  template <typename F>
+  auto map(F f) && {
+    using result_type = std::optional<decltype(f(std::move(opt->first), std::move(opt->second)))>;
+    return Monad<result_type>{opt ? std::make_optional(f(std::move(opt->first), std::move(opt->second)))
+                                  : std::nullopt};
+  }
+
+  operator std::optional<std::pair<First, Second>>() && { return std::move(opt); }
+
+  std::optional<std::pair<First, Second>> get() && { return std::move(opt); }
+};
+
+template <typename T>
+Monad<T> make_monad(T t) {
+  return Monad<T>{std::move(t)};
+}
+
 // deserialize helpers
 
 template <typename T, typename U, typename IT, typename F>
@@ -217,23 +271,28 @@ auto with_read_result(std::optional<std::pair<U, IT>> opt, F f) {
   return opt ? std::optional{std::pair<T, IT>{f(std::move(opt->first)), opt->second}} : std::nullopt;
 }
 
-template <typename T, typename IT, std::size_t... Is>
-std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end, std::index_sequence<Is...>) {
-  static_assert(std::tuple_size_v<T> - 1 == sizeof...(Is));
+template <typename>
+struct tuple_rest;
 
-  if constexpr (sizeof...(Is) == 0) {
-    return with_read_result<T>(deserialize_partial<std::tuple_element_t<0, T>>(begin, end),
-                               [](auto&& t) { return std::tuple(std::move(t)); });
+template <typename T, typename... Rest>
+struct tuple_rest<std::tuple<T, Rest...>> {
+  using type = std::tuple<Rest...>;
+};
+
+template <typename T, typename IT>
+std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end) {
+  if constexpr (std::tuple_size_v<T> == 0) {
+    return std::make_pair(std::make_tuple(), begin);
   } else {
-    using last_element = std::tuple_element_t<sizeof...(Is), T>;
-    using sub_tuple = std::tuple<std::tuple_element_t<Is, T>...>;
+    using first_element = std::remove_const_t<std::tuple_element_t<0, T>>;
+    using tuple_rest = typename tuple_rest<T>::type;
 
-    auto sub_tuple_opt =
-        tuple_deserialize<sub_tuple>(begin, end, std::make_index_sequence<std::tuple_size_v<sub_tuple> - 1>{});
-    if (!sub_tuple_opt) return std::nullopt;
-
-    return with_read_result<T>(deserialize_partial<last_element>(sub_tuple_opt->second, end), [&](auto&& t) {
-      return std::tuple_cat(std::move(sub_tuple_opt->first), std::make_tuple(std::move(t)));
+    return make_monad(deserialize_partial<first_element>(begin, end)).and_then([end](first_element&& first, IT begin) {
+      return make_monad(tuple_deserialize<tuple_rest>(begin, end))
+          .map([&first](tuple_rest&& rest, IT begin) {
+            return std::make_pair(T{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))}, begin);
+          })
+          .get();
     });
   }
 }
@@ -260,11 +319,6 @@ template <typename T, typename Visitor, std::size_t... Is>
 void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
   ((visit(std::get<Is>(tuple), visitor)), ...);
 };
-
-template <typename T, typename Tuple, std::size_t... Is>
-T from_tuple_helper(Tuple&& t, std::index_sequence<Is...>) {
-  return T{std::get<Is>(std::forward<Tuple>(t))...};
-}
 
 }  // namespace details
 
@@ -327,60 +381,47 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
     std::memcpy(&t, &array, sizeof(T));
 
     return std::pair<T, IT>{t, begin + sizeof(T)};
-  } else if constexpr (details::is_optional_v<T>) {
-    if (begin == end) return std::nullopt;
-
-    return *begin ? details::with_read_result<T>(deserialize_partial<typename T::value_type>(begin + 1, end),
-                                                 [](auto&& t) { return std::optional{std::move(t)}; })
-                  : std::pair<T, IT>{std::nullopt, begin + 1};
-  } else if constexpr (details::is_pointer_v<T>) {
-    if (begin == end) return std::nullopt;
-    using element_type = typename T::element_type;
-    return *begin ? details::with_read_result<T>(deserialize_partial<element_type>(begin + 1, end),
-                                                 [](auto&& t) { return T{new element_type{std::move(t)}}; })
-                  : std::pair<T, IT>{nullptr, begin + 1};
+  } else if constexpr (details::is_optional_v<T> || details::is_pointer_v<T>) {
+    using value_type = std::decay_t<decltype(*std::declval<T>())>;
+    return details::make_monad(deserialize_partial<bool>(begin, end)).and_then([end](bool valid, IT begin) {
+      return valid ? details::make_monad(deserialize_partial<value_type>(begin, end))
+                         .map([](value_type&& t, IT begin) {
+                           if constexpr (details::is_optional_v<T>) {
+                             return std::make_pair(std::make_optional(std::move(t)), begin);
+                           } else {
+                             return std::make_pair(T{new value_type{std::move(t)}}, begin);
+                           }
+                         })
+                         .get()
+                   : std::optional<std::pair<T, IT>>(std::make_pair(T{}, begin));
+    });
   } else if constexpr (details::is_variant_v<T>) {
-    auto index_opt = deserialize_partial<std::size_t>(begin, end);
-    if (!index_opt) return std::nullopt;
-
-    return details::variant_deserialize<T>(index_opt->second, end, index_opt->first,
-                                           std::make_index_sequence<std::variant_size_v<T>>());
-  } else if constexpr (details::is_range_v<T>) {
-    auto length_opt = deserialize_partial<std::size_t>(begin, end);
-    if (!length_opt) return std::nullopt;
-
-    auto [size, begin] = *length_opt;
-
-    T range{};
-    if constexpr (details::is_reserveable_v<T>) range.reserve(size);
-
-    for (std::size_t i = 0; i < size; i++) {
-      auto ele_opt = deserialize_partial<typename T::value_type>(begin, end);
-      if (!ele_opt) return std::nullopt;
-      if constexpr (details::is_array_v<T>) {
-        range[i] = std::move(ele_opt->first);
-      } else {
-        range.insert(range.end(), std::move(ele_opt->first));
-      }
-      begin = ele_opt->second;
-    }
-
-    return std::pair<T, IT>{std::move(range), begin};
-  } else if constexpr (details::is_tuple_v<T>) {
-    if constexpr (std::tuple_size_v<T> == 0) {
-      return std::pair<T, IT>{std::make_tuple(), begin};
-    } else {
-      return details::tuple_deserialize<T>(begin, end, std::make_index_sequence<std::tuple_size_v<T> - 1>{});
-    }
-  } else if constexpr (details::is_pair_v<T>) {
-    return details::with_read_result<T>(
-        deserialize_partial<std::tuple<typename T::first_type, typename T::second_type>>(begin, end), [](auto&& t) {
-          return T{std::move(std::get<0>(t)), std::move(std::get<1>(t))};
+    return details::make_monad(deserialize_partial<std::size_t>(begin, end))
+        .and_then([end](std::size_t index, IT begin) {
+          return details::variant_deserialize<T>(begin, end, index, std::make_index_sequence<std::variant_size_v<T>>());
         });
-  } else if constexpr (details::is_tieable_v<T>) {
-    return details::with_read_result<T>(
-        deserialize_partial<details::tuple_from_tie_t<decltype(as_tie(std::declval<T>()))>>(begin, end),
-        [](auto&& t) { return from_tuple<T>(std::move(t)); });
+  } else if constexpr (details::is_range_v<T>) {
+    return details::make_monad(deserialize_partial<std::size_t>(begin, end))
+        .and_then([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
+          T range{};
+          if constexpr (details::is_reserveable_v<T>) range.reserve(size);
+
+          for (std::size_t i = 0; i < size; i++) {
+            auto ele_opt = deserialize_partial<typename T::value_type>(begin, end);
+            if (!ele_opt) return std::nullopt;
+            if constexpr (details::is_array_v<T>) {
+              range[i] = std::move(ele_opt->first);
+            } else {
+              range.insert(range.end(), std::move(ele_opt->first));
+            }
+            begin = ele_opt->second;
+          }
+
+          return std::pair<T, IT>{std::move(range), begin};
+        });
+  } else if constexpr (details::is_product_type_v<T>) {
+    return details::make_monad(details::tuple_deserialize<details::as_tuple_type_t<T>>(begin, end))
+        .map([](auto&& tuple, IT begin) { return std::make_pair(details::from_tuple<T>(std::move(tuple)), begin); });
   } else {
     return std::nullopt;
   }
@@ -466,16 +507,6 @@ void visit(const T& t, Visitor visitor) {
   } else if constexpr (details::is_range_v<T>) {
     for (const auto& val : t) visit(val, visitor);
   }
-}
-
-template <typename Result, typename... Ts>
-Result from_tuple(const std::tuple<Ts...>& t) {
-  return details::from_tuple_helper<Result>(t, std::make_index_sequence<sizeof...(Ts)>{});
-}
-
-template <typename Result, typename... Ts>
-Result from_tuple(std::tuple<Ts...>&& t) {
-  return details::from_tuple_helper<Result>(std::move(t), std::make_index_sequence<sizeof...(Ts)>{});
 }
 
 // std::hash<T> replacement for tieable types
