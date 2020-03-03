@@ -55,6 +55,17 @@ Result accumulate(const T& t, F f, Result acc = {}) {
 
 namespace details {
 
+// std as_tie() overloads
+template <typename T>
+auto as_tie(const std::reference_wrapper<T>& t) {
+  return std::tie(t.get());
+}
+
+template <typename First, typename Second>
+auto as_tie(const std::pair<First, Second>& pair) {
+  return std::tie(pair.first, pair.second);
+}
+
 // Type Traits
 template <typename, typename = void>
 struct is_tieable : std::false_type {};
@@ -67,11 +78,6 @@ template <typename>
 inline constexpr bool is_array_v = false;
 template <typename T, std::size_t N>
 inline constexpr bool is_array_v<std::array<T, N>> = true;
-
-template <typename>
-inline constexpr bool is_pair_v = false;
-template <typename T1, typename T2>
-inline constexpr bool is_pair_v<std::pair<T1, T2>> = true;
 
 template <typename T>
 inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
@@ -106,7 +112,7 @@ inline constexpr bool is_range_v = is_range<T>::value;
 
 // We treat tuples, pairs, and tieable structs as product types
 template <typename T>
-inline constexpr bool is_product_type_v = is_tieable_v<T> || is_pair_v<T> || is_tuple_v<T>;
+inline constexpr bool is_product_type_v = is_tieable_v<T> || is_tuple_v<T>;
 
 // We treat variants, optionals, and smart ptrs as sum types
 template <typename T>
@@ -118,6 +124,11 @@ inline constexpr bool is_primitive_type_v = std::is_arithmetic_v<T> || std::is_e
 template <typename T>
 inline constexpr bool is_knot_supported_type_v =
     is_product_type_v<T> || is_sum_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
+
+template <typename>
+inline constexpr bool is_ref_wrapper_v = false;
+template <typename T>
+inline constexpr bool is_ref_wrapper_v<std::reference_wrapper<T>> = true;
 
 template <typename, typename = void>
 struct is_reserveable : std::false_type {};
@@ -133,11 +144,6 @@ using tie_enable = std::enable_if_t<is_tieable_v<T>, T2>;
 
 template <typename, typename = void>
 struct as_tuple_type;
-
-template <typename First, typename Second>
-struct as_tuple_type<std::pair<First, Second>> {
-  using type = std::tuple<First, Second>;
-};
 
 template <typename... Ts>
 struct as_tuple_type<std::tuple<Ts...>> {
@@ -160,26 +166,9 @@ struct as_tuple_type<T, tie_enable<T>> {
 template <typename T>
 using as_tuple_type_t = typename as_tuple_type<T>::type;
 
-template <typename T>
-struct product_type_size : std::tuple_size<decltype(as_tie(std::declval<T>()))> {};
-
-template <typename T1, typename T2>
-struct product_type_size<std::pair<T1, T2>> : std::integral_constant<std::size_t, 2> {};
-
-template <typename... Ts>
-struct product_type_size<std::tuple<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)> {};
-
-template <typename T>
-inline constexpr std::size_t product_type_size_v = product_type_size<T>::value;
-
 template <typename... Ts>
 const auto& as_tuple(const std::tuple<Ts...>& tuple) {
   return tuple;
-}
-
-template <typename T1, typename T2>
-auto as_tuple(const std::pair<T1, T2>& pair) {
-  return std::tie(pair.first, pair.second);
 }
 
 template <typename T>
@@ -199,37 +188,46 @@ Result from_tuple(std::tuple<Ts...>&& t) {
 
 // Generic sum type utilities (variant, optional, pointers)
 
-template <typename T>
-bool sum_type_index(const std::optional<T>& opt) {
-  return static_cast<bool>(opt);
-}
-
-template <typename T>
-std::enable_if_t<details::is_pointer_v<T>, bool> sum_type_index(const T& ptr) {
-  return ptr != nullptr;
-}
+template <typename, typename = void>
+struct as_variant_type;
 
 template <typename... Ts>
-std::size_t sum_type_index(const std::variant<Ts...>& variant) {
-  return variant.index();
+struct as_variant_type<std::variant<Ts...>> {
+  using type = std::variant<Ts...>;
+};
+
+template <typename T>
+struct as_variant_type<T, std::enable_if_t<is_pointer_v<T> || is_optional_v<T>>> {
+  using type = std::variant<std::tuple<>, std::decay_t<decltype(*std::declval<T>())>>;
+};
+
+template <typename T>
+using as_variant_type_t = typename as_variant_type<T>::type;
+
+template <typename... Ts>
+const auto& as_variant_ref(const std::variant<Ts...>& variant) {
+  return variant;
 }
 
 template <typename T>
-bool is_sum_type_null(const T& t) {
-  if constexpr (is_variant_v<T>) {
-    return t.valueless_by_exception();
-  } else {
-    return !sum_type_index(t);
-  }
+auto as_variant_ref(const T& t) {
+  using variant_t = std::variant<std::tuple<>, std::reference_wrapper<const std::decay_t<decltype(*t)>>>;
+  return t ? variant_t{std::cref(*t)} : variant_t{std::make_tuple()};
 }
 
-template <typename T, typename F>
-void sum_type_visit(const T& t, F f) {
-  if constexpr (is_variant_v<T>) {
-    if (!t.valueless_by_exception()) std::visit(f, t);
-  } else {
-    if (t) f(*t);
-  }
+template <typename Result>
+std::enable_if_t<is_variant_v<Result>, Result> from_variant(Result&& var) {
+  return std::move(var);
+}
+
+template <typename Result, typename T>
+std::enable_if_t<is_optional_v<Result>, Result> from_variant(std::variant<std::tuple<>, T>&& var) {
+  return var.index() == 0 ? std::nullopt : Result{std::move(*std::get_if<1>(&var))};
+}
+
+template <typename Result, typename T>
+std::enable_if_t<is_pointer_v<Result>, Result> from_variant(std::variant<std::tuple<>, T>&& var) {
+  return Result{var.index() == 0 ? nullptr : new T{std::move(*std::get_if<1>(&var))}};
 }
 
 // Monadic optional wrapper for help with deserialize
@@ -266,11 +264,6 @@ Monad<T> make_monad(T t) {
 
 // deserialize helpers
 
-template <typename T, typename U, typename IT, typename F>
-auto with_read_result(std::optional<std::pair<U, IT>> opt, F f) {
-  return opt ? std::optional{std::pair<T, IT>{f(std::move(opt->first)), opt->second}} : std::nullopt;
-}
-
 template <typename>
 struct tuple_rest;
 
@@ -298,11 +291,13 @@ std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end) {
 }
 
 template <typename Variant, typename IT, std::size_t... Is>
-std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, std::size_t index,
-                                                          std::index_sequence<Is...>) {
-  std::array<std::optional<std::pair<Variant, IT>>, sizeof...(Is)> options{
-      (index == Is ? deserialize_partial<std::variant_alternative_t<Is, Variant>>(begin, end) : std::nullopt)...};
-  return index >= sizeof...(Is) ? std::nullopt : std::move(options[index]);
+std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, uint8_t index, std::index_sequence<Is...>) {
+  static constexpr auto options = std::array{+[](IT begin, IT end) {
+    return make_monad(deserialize_partial<std::variant_alternative_t<Is, Variant>>(begin, end))
+        .map([](auto&& ele, IT begin) { return std::make_pair(Variant{std::move(ele)}, begin); })
+        .get();
+  }...};
+  return index >= sizeof...(Is) ? std::nullopt : options[index](begin, end);
 }
 
 // Taken from boost::hash_combine
@@ -343,7 +338,7 @@ IT serialize(const Outer& t, IT out) {
                       if constexpr (details::is_primitive_type_v<T>) {
                         return serialize_primitive(value, out);
                       } else if constexpr (details::is_sum_type_v<T>) {
-                        return serialize_primitive(details::sum_type_index(value), out);
+                        return serialize_primitive(static_cast<uint8_t>(details::as_variant_ref(value).index()), out);
                       } else if constexpr (details::is_range_v<T>) {
                         return serialize_primitive(value.size(), out);
                       } else {
@@ -366,7 +361,7 @@ template <typename Outer, typename IT>
 std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT begin, IT end) {
   using T = std::remove_const_t<Outer>;
 
-  static_assert(!std::is_reference_v<Outer>);
+  static_assert(!std::is_reference_v<Outer> && !details::is_ref_wrapper_v<Outer>);
   static_assert(!std::is_pointer_v<T>);
   static_assert(std::is_same_v<typename IT::value_type, uint8_t>);
   static_assert(details::is_knot_supported_type_v<T>);
@@ -381,25 +376,16 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
     std::memcpy(&t, &array, sizeof(T));
 
     return std::pair<T, IT>{t, begin + sizeof(T)};
-  } else if constexpr (details::is_optional_v<T> || details::is_pointer_v<T>) {
-    using value_type = std::decay_t<decltype(*std::declval<T>())>;
-    return details::make_monad(deserialize_partial<bool>(begin, end)).and_then([end](bool valid, IT begin) {
-      return valid ? details::make_monad(deserialize_partial<value_type>(begin, end))
-                         .map([](value_type&& t, IT begin) {
-                           if constexpr (details::is_optional_v<T>) {
-                             return std::make_pair(std::make_optional(std::move(t)), begin);
-                           } else {
-                             return std::make_pair(T{new value_type{std::move(t)}}, begin);
-                           }
-                         })
-                         .get()
-                   : std::optional<std::pair<T, IT>>(std::make_pair(T{}, begin));
+  } else if constexpr (details::is_sum_type_v<T>) {
+    using variant_t = details::as_variant_type_t<T>;
+    return details::make_monad(deserialize_partial<uint8_t>(begin, end)).and_then([end](uint8_t index, IT begin) {
+      return details::make_monad(details::variant_deserialize<variant_t>(
+                                     begin, end, index, std::make_index_sequence<std::variant_size_v<variant_t>>()))
+          .map([](variant_t&& variant, IT begin) {
+            return std::make_pair(details::from_variant<T>(std::move(variant)), begin);
+          })
+          .get();
     });
-  } else if constexpr (details::is_variant_v<T>) {
-    return details::make_monad(deserialize_partial<std::size_t>(begin, end))
-        .and_then([end](std::size_t index, IT begin) {
-          return details::variant_deserialize<T>(begin, end, index, std::make_index_sequence<std::variant_size_v<T>>());
-        });
   } else if constexpr (details::is_range_v<T>) {
     return details::make_monad(deserialize_partial<std::size_t>(begin, end))
         .and_then([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
@@ -443,13 +429,20 @@ std::ostream& debug_string(std::ostream& os, const T& t) {
   } else if constexpr (std::is_enum_v<T>) {
     return os << static_cast<std::underlying_type_t<T>>(t);
   } else if constexpr (details::is_sum_type_v<T>) {
-    if (details::is_sum_type_null(t)) {
-      return os << "None";
-    } else {
-      os << "<";
-      details::sum_type_visit(t, [&os](const auto& inner) { debug_string(os, inner); });
-      return os << ">";
-    }
+    os << "<";
+    std::visit(
+        [&os](const auto& inner) {
+          using inner_t = std::decay_t<decltype(inner)>;
+          if constexpr (std::is_same_v<inner_t, std::tuple<>>) {
+            os << "null";
+          } else if constexpr (details::is_ref_wrapper_v<inner_t>) {
+            debug_string(os, inner.get());
+          } else {
+            debug_string(os, inner);
+          }
+        },
+        details::as_variant_ref(t));
+    return os << ">";
   } else if constexpr (std::is_same_v<T, std::string>) {
     // Special case string
     return os << "\"" << t << "\"";
@@ -464,9 +457,10 @@ std::ostream& debug_string(std::ostream& os, const T& t) {
   } else if constexpr (details::is_product_type_v<T>) {
     const auto& tuple = details::as_tuple(t);
     os << "(";
-    if constexpr (details::product_type_size_v<T>> 0) {
+    if constexpr (std::tuple_size_v<details::as_tuple_type_t<T>>> 0) {
       debug_string(os, std::get<0>(tuple));
-      details::tuple_debug_string(os, tuple, std::make_index_sequence<details::product_type_size_v<T> - 1>());
+      details::tuple_debug_string(os, tuple,
+                                  std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>> - 1>());
     }
     return os << ")";
   } else {
@@ -481,7 +475,7 @@ std::size_t hash_value(const Outer& t) {
     if constexpr (details::is_primitive_type_v<T>) {
       return details::hash_combine(hash, std::hash<T>{}(value));
     } else if constexpr (details::is_sum_type_v<T>) {
-      return details::hash_combine(hash, details::sum_type_index(value));
+      return details::hash_combine(hash, details::as_variant_ref(value).index());
     } else {
       return hash;
     }
@@ -501,9 +495,10 @@ void visit(const T& t, Visitor visitor) {
 
   // Call visit recursively depending on type
   if constexpr (details::is_product_type_v<T>) {
-    details::visit_tuple(details::as_tuple(t), visitor, std::make_index_sequence<details::product_type_size_v<T>>());
+    details::visit_tuple(details::as_tuple(t), visitor,
+                         std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
   } else if constexpr (details::is_sum_type_v<T>) {
-    details::sum_type_visit(t, [&](const auto& val) { return visit(val, visitor); });
+    std::visit([&](const auto& val) { return visit(val, visitor); }, details::as_variant_ref(t));
   } else if constexpr (details::is_range_v<T>) {
     for (const auto& val : t) visit(val, visitor);
   }

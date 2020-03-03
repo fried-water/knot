@@ -53,6 +53,8 @@ int expr_main() {
   dump_leaf_values(combined);
 
   example(combined);
+
+  return 0;
 }
 /*
 Add ops: 2

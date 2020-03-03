@@ -115,6 +115,8 @@ int main() {
   y.h = nullptr;
   y2.h = nullptr;
   assert(y == y2);
+
+  return 0;
 }
 /*
 X: (<5>, "abc", [3, 4, 5], 1)
