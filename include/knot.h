@@ -46,10 +46,7 @@ void visit(const T&, F f);
 
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc = {}) {
-  visit(t, [&](const auto& value) {
-    acc = f(value, std::move(acc));
-    return true;
-  });
+  visit(t, [&](const auto& value) { acc = f(value, std::move(acc)); });
   return acc;
 }
 
@@ -378,14 +375,14 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
     return std::pair<T, IT>{t, begin + sizeof(T)};
   } else if constexpr (details::is_sum_type_v<T>) {
     using variant_t = details::as_variant_type_t<T>;
-    return details::make_monad(deserialize_partial<uint8_t>(begin, end)).and_then([end](uint8_t index, IT begin) {
-      return details::make_monad(details::variant_deserialize<variant_t>(
-                                     begin, end, index, std::make_index_sequence<std::variant_size_v<variant_t>>()))
-          .map([](variant_t&& variant, IT begin) {
-            return std::make_pair(details::from_variant<T>(std::move(variant)), begin);
-          })
-          .get();
-    });
+    return details::make_monad(deserialize_partial<uint8_t>(begin, end))
+        .and_then([end](uint8_t index, IT begin) {
+          return details::variant_deserialize<variant_t>(begin, end, index,
+                                                         std::make_index_sequence<std::variant_size_v<variant_t>>());
+        })
+        .map([](variant_t&& variant, IT begin) {
+          return std::make_pair(details::from_variant<T>(std::move(variant)), begin);
+        });
   } else if constexpr (details::is_range_v<T>) {
     return details::make_monad(deserialize_partial<std::size_t>(begin, end))
         .and_then([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
