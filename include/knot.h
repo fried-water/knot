@@ -232,32 +232,28 @@ std::enable_if_t<is_pointer_v<Result>, Result> from_variant(std::variant<std::tu
 template <typename T>
 struct Monad;
 
+template <typename T>
+auto make_monad(T&& t) {
+  return Monad<std::decay_t<T>>{std::forward<T>(t)};
+}
+
 template <typename First, typename Second>
 struct Monad<std::optional<std::pair<First, Second>>> {
   std::optional<std::pair<First, Second>> opt;
 
   template <typename F>
   auto and_then(F f) && {
-    using result_type = decltype(f(std::move(opt->first), std::move(opt->second)));
-    return Monad<result_type>{opt ? f(std::move(opt->first), std::move(opt->second)) : std::nullopt};
+    return make_monad(opt ? f(std::move(opt->first), std::move(opt->second)) : std::nullopt);
   }
 
   template <typename F>
   auto map(F f) && {
-    using result_type = std::optional<decltype(f(std::move(opt->first), std::move(opt->second)))>;
-    return Monad<result_type>{opt ? std::make_optional(f(std::move(opt->first), std::move(opt->second)))
-                                  : std::nullopt};
+    return make_monad(opt ? std::make_optional(f(std::move(opt->first), std::move(opt->second))) : std::nullopt);
   }
 
   operator std::optional<std::pair<First, Second>>() && { return std::move(opt); }
-
   std::optional<std::pair<First, Second>> get() && { return std::move(opt); }
 };
-
-template <typename T>
-Monad<T> make_monad(T t) {
-  return Monad<T>{std::move(t)};
-}
 
 // deserialize helpers
 
