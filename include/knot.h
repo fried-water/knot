@@ -479,11 +479,15 @@ template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
   static_assert(details::is_knot_supported_type_v<T>);
 
-  // visit the value, if the function returns a value, stop recursing on false
-  if constexpr (std::is_same_v<void, decltype(visitor(t))>) {
-    visitor(t);
-  } else {
-    if (!visitor(t)) return;
+  // Ref_wrappers and empty tuples appear as a result of how I abstract away sum types
+  // Probably should add dedicated types to avoid not visiting actual ref_wrappers/empty tuples
+  if constexpr (!details::is_ref_wrapper_v<T> && !std::is_same_v<T, std::tuple<>>) {
+    // visit the value, if the function returns a value, stop recursing on false
+    if constexpr (std::is_same_v<void, decltype(visitor(t))>) {
+      visitor(t);
+    } else {
+      if (!visitor(t)) return;
+    }
   }
 
   // Call visit recursively depending on type

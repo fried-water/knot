@@ -69,6 +69,12 @@ TEST(Hash, basic_variant) {
 
 TEST(Hash, unordered_containers) {
   // Can put knot::hash-able things in unordered_containers
-  std::unordered_set<std::vector<int>, knot::Hash> set;
-  set.insert({});
+  std::unordered_set<Point, knot::Hash> set1;
+  set1.insert({});
+
+  std::unordered_set<Bbox, knot::Hash> set2;
+  set2.insert({});
+
+  std::unordered_set<std::vector<Bbox>, knot::Hash> set3;
+  set3.insert({});
 }
