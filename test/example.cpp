@@ -1,3 +1,5 @@
+#include "gtest/gtest.h"
+
 #include "knot.h"
 
 #include <cassert>
@@ -53,7 +55,7 @@ struct is_streamable : std::false_type {};
 template <typename T>
 struct is_streamable<T, std::void_t<decltype(std::declval<std::ostream&>() << std::declval<T>())>> : std::true_type {};
 
-int main() {
+TEST(Example, test1) {
   X x{5, "abc", {3, 4, 5}, Day::Tue};
   Y y;
   y.a.insert(x);
@@ -74,13 +76,13 @@ int main() {
   std::cout << "X hash: " << knot::hash_value(x) << "\n";
   std::cout << "Y hash: " << knot::hash_value(y) << "\n";
 
-  std::vector<uint8_t> x_bytes = knot::serialize(x);
-  std::vector<uint8_t> y_bytes = knot::serialize(y);
+  const std::vector<uint8_t> x_bytes = knot::serialize(x);
+  const std::vector<uint8_t> y_bytes = knot::serialize(y);
 
   std::cout << "Serialization X size: " << x_bytes.size() << "\n";
   std::cout << "Serialization Y size: " << y_bytes.size() << "\n";
 
-  assert(x == knot::deserialize<X>(x_bytes.begin(), x_bytes.end()));
+  EXPECT_EQ(x, knot::deserialize<X>(x_bytes.begin(), x_bytes.end()));
   Y y2 = *knot::deserialize<Y>(y_bytes.begin(), y_bytes.end());
 
   const int num_threes = knot::accumulate<int>(y, [](const auto& t, int count) {
@@ -89,7 +91,7 @@ int main() {
     }
     return count;
   });
-  std::cout << "Y has " << num_threes << " threes\n";
+  EXPECT_EQ(7, num_threes);
 
   const std::vector<X> xs = knot::accumulate<std::vector<X>>(y, [](const auto& t, std::vector<X> vec) {
     if constexpr (std::is_same_v<X, std::decay_t<decltype(t)>>) {
@@ -97,7 +99,8 @@ int main() {
     }
     return vec;
   });
-  std::cout << "Y has " << xs.size() << " Xs\n";
+  const std::vector<X> expected_xs{x, x, x, x, X{}, X{}, x, X{}, x};
+  EXPECT_EQ(expected_xs, xs);
 
   knot::visit(x, [](const auto& t) {
     if constexpr (is_streamable<std::decay_t<decltype(t)>>::value) {
@@ -110,27 +113,18 @@ int main() {
   });
 
   // unique_ptr doesnt do deep equality comparison
-  assert(y != y2);
-  assert(*y2.h == *y.h);
+  EXPECT_NE(y, y2);
+  EXPECT_EQ(*y.h, *y2.h);
   y.h = nullptr;
   y2.h = nullptr;
-  assert(y == y2);
-
-  return 0;
+  EXPECT_EQ(y, y2);
 }
 /*
 X: (<5>, "abc", [3, 4, 5], 1)
-Y: ([(<5>, "abc", [3, 4, 5], 1)], [(<5>, "abc", [3, 4, 5], 1)], [(3, (<5>, "abc", [3, 4, 5], 1))], [(2, (<5>, "abc", [3, 4, 5], 1))], None, ((None, "", [], 0), 4), [(None, "", [], 0), (<5>, "abc", [3, 4, 5], 1)], <(None, "", [], 0)>, <(<5>, "abc", [3, 4, 5], 1)>)
-X hash: 15593058191117246053
-Y hash: 14279034135752118131
-Serialization X size: 40
-Serialization Y size: 365
-Y has 7 threes
-Y has 9 Xs
-1X
-St8optionalIiE
-i: 5
-NSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE: abc
+Y: ([(<5>, "abc", [3, 4, 5], 1)], [(<5>, "abc", [3, 4, 5], 1)], [(3, (<5>, "abc", [3, 4, 5], 1))], [(2, (<5>, "abc", [3,
+4, 5], 1))], None, ((None, "", [], 0), 4), [(None, "", [], 0), (<5>, "abc", [3, 4, 5], 1)], <(None, "", [], 0)>, <(<5>,
+"abc", [3, 4, 5], 1)>) X hash: 15593058191117246053 Y hash: 14279034135752118131 Serialization X size: 40 Serialization
+Y size: 365 Y has 7 threes Y has 9 Xs 1X St8optionalIiE i: 5 NSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE: abc
 St6vectorIiSaIiEE
 i: 3
 i: 4

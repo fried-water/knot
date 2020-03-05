@@ -1,3 +1,5 @@
+#include "gtest/gtest.h"
+
 #include "knot.h"
 
 #include <iostream>
@@ -16,19 +18,11 @@ struct BinaryExpr {
 
 auto as_tie(const BinaryExpr& b) { return std::tie(b.op, b.lhs, b.rhs); }
 
-void example(const Expr& expr) {
-  std::size_t hash = knot::hash_value(expr);
-  std::cout << knot::debug_string(expr) << '\n';
-
-  std::vector<uint8_t> bytes = knot::serialize(expr);
-  std::optional<Expr> expr2 = knot::deserialize<Expr>(bytes.begin(), bytes.end());
-}
-
-int num_add_ops(const Expr& expr) {
+int num_ops(const Expr& expr, const Op op) {
   return knot::accumulate(expr,
-                          [](const auto& value, int count) {
+                          [op](const auto& value, int count) {
                             if constexpr (std::is_same_v<Op, std::decay_t<decltype(value)>>) {
-                              return value == Op::Add ? count + 1 : count;
+                              return value == op ? count + 1 : count;
                             }
                             return count;
                           },
@@ -43,25 +37,22 @@ void dump_leaf_values(const Expr& expr) {
   });
 }
 
-int expr_main() {
-  Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, Expr{5}, Expr{7}});
+TEST(Expr, test) {
+  Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{5}, Expr{7}});
   Expr e2 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{8}, Expr{2}});
   Expr e3 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, std::move(e2), Expr{4}});
-  Expr combined = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, std::move(e1), std::move(e3)});
+  const Expr expr = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, std::move(e1), std::move(e3)});
 
-  std::cout << "Add ops: " << num_add_ops(combined) << "\n";
-  dump_leaf_values(combined);
+  EXPECT_EQ(1, num_ops(expr, Op::Add));
+  EXPECT_EQ(3, num_ops(expr, Op::Sub));
 
-  example(combined);
+  dump_leaf_values(expr);
+  std::cout << "Hash: " << knot::hash_value(expr) << '\n';
+  std::cout << knot::debug_string(expr) << '\n';
 
-  return 0;
+  const std::vector<uint8_t> bytes = knot::serialize(expr);
+  const std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
+
+  EXPECT_TRUE(deserialized.has_value());
+  EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
 }
-/*
-Add ops: 2
-Leaf: 5
-Leaf: 7
-Leaf: 8
-Leaf: 2
-Leaf: 4
-<<(0, <<(0, <5>, <7>)>>, <<(1, <<(1, <8>, <2>)>>, <4>)>>)>>
-*/
