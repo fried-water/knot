@@ -85,19 +85,8 @@ TEST(Visit, BigObject) {
   const Bbox small_box{Point{0, 0}, Point{1, 1}};
   const Bbox big_box{Point{0, 0}, Point{50, 50}};
 
-  BigObject obj;
-  obj.a.insert(small_box);
-  obj.b.insert(big_box);
-  obj.c[small_box] = 5;
-  obj.d[big_box] = 6;
-  obj.e = small_box;
-  obj.f = std::make_tuple(big_box, 5);
-  obj.g = {small_box, big_box};
-  obj.h = std::make_unique<Bbox>(small_box);
-  obj.i = big_box;
-
   std::vector<Bbox> boxes;
-  knot::visit(obj, [&](const auto& t) {
+  knot::visit(example_big_object(), [&](const auto& t) {
     if constexpr (std::is_same_v<Bbox, std::decay_t<decltype(t)>>) {
       boxes.push_back(t);
     }

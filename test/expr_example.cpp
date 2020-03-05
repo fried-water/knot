@@ -54,5 +54,6 @@ TEST(Expr, test) {
   const std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
 
   EXPECT_TRUE(deserialized.has_value());
+  // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
   EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
 }

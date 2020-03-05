@@ -51,4 +51,22 @@ struct BigObject : knot::Compareable {
 
 inline auto as_tie(const BigObject& b) { return std::tie(b.a, b.b, b.c, b.d, b.e, b.f, b.g, b.h, b.i); }
 
+inline BigObject example_big_object() {
+  const Bbox small_box{Point{0, 0}, Point{1, 1}};
+  const Bbox big_box{Point{0, 0}, Point{50, 50}};
+
+  BigObject obj;
+  obj.a.insert(small_box);
+  obj.b.insert(big_box);
+  obj.c[small_box] = 5;
+  obj.d[big_box] = 6;
+  obj.e = small_box;
+  obj.f = std::make_tuple(big_box, 5);
+  obj.g = {small_box, big_box};
+  obj.h = std::make_unique<Bbox>(small_box);
+  obj.i = big_box;
+
+  return obj;
+}
+
 #endif
