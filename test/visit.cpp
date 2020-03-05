@@ -63,3 +63,47 @@ TEST(Visit, variant) {
   const std::vector<SomeType> expected2{var_int, 5};
   EXPECT_EQ(expected2, gather_objects(var_int));
 }
+
+TEST(Visit, stop_searching) {
+  const std::vector<std::tuple<int>> tuples{{1}, {2}, {3}};
+
+  int visited = 0;
+  knot::visit(tuples, [&](const auto& t) {
+    visited++;
+    // Should never visit ints
+    const bool is_int = std::is_same_v<int, std::decay_t<decltype(t)>>;
+    EXPECT_FALSE(is_int);
+    // Don't visit through tuple<int>
+    return !std::is_same_v<std::tuple<int>, std::decay_t<decltype(t)>>;
+  });
+
+  // Only visited the vector and its 3 tuples
+  EXPECT_EQ(4, visited);
+}
+
+TEST(Visit, BigObject) {
+  const Bbox small_box{Point{0, 0}, Point{1, 1}};
+  const Bbox big_box{Point{0, 0}, Point{50, 50}};
+
+  BigObject obj;
+  obj.a.insert(small_box);
+  obj.b.insert(big_box);
+  obj.c[small_box] = 5;
+  obj.d[big_box] = 6;
+  obj.e = small_box;
+  obj.f = std::make_tuple(big_box, 5);
+  obj.g = {small_box, big_box};
+  obj.h = std::make_unique<Bbox>(small_box);
+  obj.i = big_box;
+
+  std::vector<Bbox> boxes;
+  knot::visit(obj, [&](const auto& t) {
+    if constexpr (std::is_same_v<Bbox, std::decay_t<decltype(t)>>) {
+      boxes.push_back(t);
+    }
+  });
+
+  const std::vector<Bbox> expected_boxes{small_box, big_box,   small_box, big_box,   small_box,
+                                         big_box,   small_box, big_box,   small_box, big_box};
+  EXPECT_EQ(expected_boxes, boxes);
+}

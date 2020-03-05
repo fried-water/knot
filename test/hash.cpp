@@ -77,4 +77,7 @@ TEST(Hash, unordered_containers) {
 
   std::unordered_set<std::vector<Bbox>, knot::Hash> set3;
   set3.insert({});
+
+  std::unordered_set<BigObject, knot::Hash> set4;
+  set4.insert(BigObject{});
 }
