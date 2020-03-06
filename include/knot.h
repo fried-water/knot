@@ -306,7 +306,30 @@ void tuple_debug_string(std::ostream& os, const T& tuple, std::index_sequence<Is
 template <typename T, typename Visitor, std::size_t... Is>
 void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
   ((visit(std::get<Is>(tuple), visitor)), ...);
-};
+}
+
+template <typename T, typename = void>
+struct can_visit : std::false_type {};
+template <typename Visitor, typename... Args>
+struct can_visit<std::tuple<Visitor, Args...>, std::void_t<decltype(std::declval<Visitor>()(std::declval<Args>()...))>> : std::true_type {};
+template <typename Visitor, typename... Args>
+inline constexpr bool can_visit_v = can_visit<Visitor, Args...>::value;
+
+template <typename Result, typename T, typename Visitor, std::size_t... Is>
+auto evaluate_expand_array(const T& t, Visitor visitor, std::array<Result, sizeof...(Is)>&& results, std::index_sequence<Is...>) {
+  return visitor(t, std::move(results[Is])...);
+}
+
+template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
+auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
+  const auto& tuple = as_tuple(t);
+  std::array<Result, sizeof...(Is)> result{eval(std::get<Is>(tuple), visitor)...};
+  if constexpr(sizeof...(Is) == 1 && !details::can_visit_v<std::tuple<Visitor, decltype(std::get<0>(tuple))>>) {
+    return result[0];
+  } else {
+   return evaluate_expand_array(t, visitor, std::move(result), std::make_index_sequence<sizeof...(Is)>());
+  }
+}
 
 }  // namespace details
 
@@ -501,6 +524,42 @@ void visit(const T& t, Visitor visitor) {
   }
 }
 
+template <typename Result, typename T, typename Visitor>
+Result evaluate(const T& t, Visitor visitor) {
+  static_assert(details::is_knot_supported_type_v<T>);
+
+  if constexpr (details::is_primitive_type_v<T>) {
+    static_assert(details::can_visit_v<std::tuple<Visitor, T>> || std::is_same_v<T, Result>);
+    if constexpr(details::can_visit_v<std::tuple<Visitor, T>>) {
+      return visitor(t);
+    } else {
+     return t;
+    }
+  } if constexpr (details::is_product_type_v<T>) {
+    return details::evaluate_tuple<Result>(t, visitor,
+      [](const auto& t, auto visitor){ return evaluate<Result>(t, visitor); },
+      std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
+  } else if constexpr (details::is_sum_type_v<T>) {
+    auto result = std::visit([&](const auto& val) -> Result {
+      if constexpr(std::is_same_v<std::decay_t<decltype(val)>, std::tuple<>>) {
+        throw 0;
+      } else {
+        return evaluate<Result>(val, visitor);
+      }
+    }, details::as_variant_ref(t));
+    if constexpr(details::can_visit_v<std::tuple<Visitor, T, decltype(result)>>) {
+      return visitor(t, std::move(result));
+    } else {
+      return result;
+    }
+  } else if constexpr (details::is_range_v<T>) {
+    // TODO handle ranges
+    static_assert(!details::is_range_v<T>);
+  } else {
+    return Result{};
+  }
+}
+
 // std::hash<T> replacement for tieable types
 struct Hash {
   template <typename T>
@@ -513,6 +572,7 @@ struct Hash {
 struct Compareable {
   template <typename T>
   friend details::tie_enable<T, bool> operator==(const T& lhs, const T& rhs) {
+    using knot::details::as_tie;
     return as_tie(lhs) == as_tie(rhs);
   }
 

@@ -37,6 +37,14 @@ void dump_leaf_values(const Expr& expr) {
   });
 }
 
+struct EvalVisitor {
+  int operator()(const BinaryExpr& expr, int op, int lhs, int rhs) const {
+    return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
+  }
+
+  int operator()(Op op) const { return 0; }
+};
+
 TEST(Expr, test) {
   Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{5}, Expr{7}});
   Expr e2 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{8}, Expr{2}});
@@ -56,4 +64,13 @@ TEST(Expr, test) {
   EXPECT_TRUE(deserialized.has_value());
   // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
   EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
+}
+
+TEST(Expr, eval) {
+  Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{5}, Expr{7}});
+  Expr e2 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{8}, Expr{2}});
+  Expr e3 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, std::move(e2), Expr{4}});
+  const Expr expr = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, std::move(e1), std::move(e3)});
+
+  EXPECT_EQ(0, knot::evaluate<int>(expr, EvalVisitor{}));
 }
