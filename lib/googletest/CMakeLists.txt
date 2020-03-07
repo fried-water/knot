@@ -63,6 +63,8 @@ if (COMMAND set_up_hermetic_build)
   set_up_hermetic_build()
 endif()
 
+set (CMAKE_CXX_STANDARD 11)
+
 # These commands only run if this is the main project
 if(CMAKE_PROJECT_NAME STREQUAL "gtest" OR CMAKE_PROJECT_NAME STREQUAL "googletest-distribution")
 

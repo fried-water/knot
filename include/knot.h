@@ -47,6 +47,17 @@ void visit(const T&, F);
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc = {});
 
+enum class SearchResult {
+  Explore,  // Continue exploring children
+  Reject,   // Don't explore children
+  Finish    // End the search
+};
+
+// Returns true if SearchResult::Finish was returned
+// before exhausting the search space
+template <typename T, typename F>
+bool depth_first_search(const T&, F);
+
 namespace details {
 
 // std as_tie() overload
@@ -306,6 +317,52 @@ auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<
   }
 }
 
+template <typename T, typename F>
+std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent);
+
+template <typename T, typename F, std::size_t... Is>
+std::pair<bool, int> dfs_tuple(const T& tuple, F f, int id, int parent, std::index_sequence<Is...>) {
+  static constexpr std::array<std::pair<bool, int> (*)(const T&, F, int, int), sizeof...(Is)> funcs{
+      +[](const T& tuple, F f, int id, int parent) { return dfs_internal(std::get<Is>(tuple), f, id, parent); }...};
+  std::pair<bool, int> result{false, id};
+  for (int i = 0; i < sizeof...(Is); i++) {
+    result = funcs[i](tuple, f, result.second, parent);
+    if (result.first) return result;
+  }
+  return result;
+}
+
+template <typename T, typename F>
+std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent) {
+  if constexpr (can_visit_v<F, T, int, int>) {
+    SearchResult result = f(t, id++, parent);
+
+    if (result == SearchResult::Finish)
+      return {true, id};
+    else if (result == SearchResult::Reject)
+      return {false, id};
+
+    parent = id - 1;
+  }
+
+  if constexpr (is_product_type_v<T>) {
+    return dfs_tuple(as_tuple(t), f, id, parent, std::make_index_sequence<std::tuple_size_v<as_tuple_type_t<T>>>());
+  } else if constexpr (is_variant_v<T>) {
+    return std::visit([&](const auto& val) { return dfs_internal(val, f, id, parent); }, t);
+  } else if constexpr (is_maybe_type_v<T>) {
+    return static_cast<bool>(t) ? dfs_internal(*t, f, id, parent) : std::pair<bool, int>{false, id};
+  } else if constexpr (is_range_v<T>) {
+    std::pair<bool, int> result{false, id};
+    for (const auto& val : t) {
+      result = dfs_internal(val, f, result.second, parent);
+      if (result.first) return result;
+    }
+    return result;
+  } else {
+    return {false, id};
+  }
+}
+
 }  // namespace details
 
 template <typename T>
@@ -552,6 +609,11 @@ Result evaluate(const T& t, Visitor visitor) {
   } else {
     return Result{};
   }
+}
+
+template <typename T, typename F>
+bool depth_first_search(const T& t, F f) {
+  return details::dfs_internal(t, f, 0, -1).first;
 }
 
 // std::hash<T> replacement for tieable types
