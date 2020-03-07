@@ -108,7 +108,7 @@ TEST(Serialize, map) {
 TEST(Serialize, variant_point) {
   const std::variant<int, Point> var = Point{45, 89};
   const std::vector<uint8_t> bytes = knot::serialize(var);
-  const std::vector<uint8_t> expected{1, 45, 0, 0, 0, 89, 0, 0, 0};
+  const std::vector<uint8_t> expected{1, 0, 0, 0, 0, 0, 0, 0, 45, 0, 0, 0, 89, 0, 0, 0};
   EXPECT_EQ(expected, bytes);
 
   const auto result = knot::deserialize<std::variant<int, Point>>(bytes.begin(), bytes.end());
@@ -118,7 +118,7 @@ TEST(Serialize, variant_point) {
 TEST(Serialize, variant_int) {
   const std::variant<int, Point> var = 5;
   const std::vector<uint8_t> bytes = knot::serialize(var);
-  const std::vector<uint8_t> expected{0, 5, 0, 0, 0};
+  const std::vector<uint8_t> expected{0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0};
   EXPECT_EQ(expected, bytes);
 
   const auto result = knot::deserialize<std::variant<int, Point>>(bytes.begin(), bytes.end());

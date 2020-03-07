@@ -18,23 +18,13 @@ struct BinaryExpr {
 
 auto as_tie(const BinaryExpr& b) { return std::tie(b.op, b.lhs, b.rhs); }
 
-int num_ops(const Expr& expr, const Op op) {
-  return knot::accumulate(expr,
-                          [op](const auto& value, int count) {
-                            if constexpr (std::is_same_v<Op, std::decay_t<decltype(value)>>) {
-                              return value == op ? count + 1 : count;
-                            }
-                            return count;
-                          },
-                          0);
+int num_ops(const Expr& expr, const Op desired_op) {
+  return knot::accumulate(
+      expr, [desired_op](Op op, int count) { return op == desired_op ? count + 1 : count; }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
-  return knot::visit(expr, [](const auto& value) {
-    if constexpr (std::is_same_v<int, std::decay_t<decltype(value)>>) {
-      std::cout << "Leaf: " << value << '\n';
-    }
-  });
+  return knot::visit(expr, [](int leaf) { std::cout << "Leaf: " << leaf << '\n'; });
 }
 
 struct EvalVisitor {

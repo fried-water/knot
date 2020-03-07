@@ -44,23 +44,21 @@ void example(const Expr& expr) {
   std::cout << knot::debug_string(expr) << '\n';
 
   std::vector<uint8_t> bytes = knot::serialize(expr);
-  std::optional<Expr> expr2 = knot::deserialize<Expr>(bytes.begin(), bytes.end());
+  std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
+
+  // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
+  assert(deserialized.has_value() && knot::debug_string(expr) == knot::debug_string(*deserialized));
 }
 
 int num_add_ops(const Expr& expr) {
-  return knot::accumulate(expr, [](const auto& value, int count) {
-      if constexpr (std::is_same_v<Op, std::decay_t<decltype(value)>>) {
-        return value == Op::Add ? count + 1 : count;
-      }
-      return count;
-    }, 0);
+  return knot::accumulate(expr, [](Op op, int count) {
+    return op == Op::Add ? count + 1 : count;
+  }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
-  return knot::visit(expr, [](const auto& value) {
-      if constexpr (std::is_same_v<int, std::decay_t<decltype(value)>>) {
-        std::cout << "Leaf: " << value << '\n';
-      }
-    });
+  return knot::visit(expr, [](int leaf) {
+    std::cout << "Leaf: " << leaf << '\n'; 
+  });
 }
 ```
