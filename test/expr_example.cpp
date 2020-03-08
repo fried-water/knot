@@ -3,13 +3,17 @@
 #include "knot.h"
 
 #include <iostream>
+#include <numeric>
 
 enum class Op { Add, Sub };
+enum class AccOp { Add, Mul };
 
 struct BinaryExpr;
 struct UnaryExpr;
+struct AccumulateExpr;
 
-using Expr = std::variant<std::unique_ptr<BinaryExpr>, std::unique_ptr<UnaryExpr>, int>;
+using Expr =
+    std::variant<std::unique_ptr<BinaryExpr>, std::unique_ptr<UnaryExpr>, std::unique_ptr<AccumulateExpr>, int>;
 
 struct BinaryExpr {
   Op op;
@@ -22,8 +26,13 @@ struct UnaryExpr {
   Expr child;
 };
 
+struct AccumulateExpr {
+  AccOp op;
+  std::vector<std::optional<Expr>> children;
+};
+
 int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::accumulate(expr, [desired_op](Op op, int count) { return op == desired_op ? count + 1 : count; }, 0);
+  return knot::accumulate(expr, [desired_op](int count, Op op) { return op == desired_op ? count + 1 : count; }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
@@ -35,7 +44,16 @@ int eval(const Expr& expr) {
     int operator()(const BinaryExpr& expr, int lhs, int rhs) const {
       return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
     }
+
     int operator()(const UnaryExpr& expr, int child) const { return expr.op == Op::Add ? child : -child; }
+
+    int operator()(const AccumulateExpr& expr, std::vector<std::optional<int>> children) const {
+      return std::accumulate(children.begin(), children.end(), expr.op == AccOp::Add ? 0 : 1,
+                             [&](int acc, const std::optional<int>& child) {
+                               if (!child) return acc;
+                               return expr.op == AccOp::Add ? *child + acc : *child * acc;
+                             });
+    }
   };
   return knot::evaluate<int>(expr, EvalVisitor{});
 }
@@ -43,16 +61,25 @@ int eval(const Expr& expr) {
 Expr binary(Op op, Expr lhs, Expr rhs) {
   return std::make_unique<BinaryExpr>(BinaryExpr{op, std::move(lhs), std::move(rhs)});
 }
+
 Expr unary(Op op, Expr child) { return std::make_unique<UnaryExpr>(UnaryExpr{op, std::move(child)}); }
 
-// ((5 - 7) + (-(8 + 2) - 4))
-// = -2 + (-10 - 4)
-// = -16
+Expr accumuate(AccOp op, std::vector<std::optional<Expr>> children) {
+  return std::make_unique<AccumulateExpr>(AccumulateExpr{op, std::move(children)});
+}
+
 auto make_big_expr() {
-  Expr e1 = binary(Op::Sub, Expr{5}, Expr{7});
-  Expr e2 = unary(Op::Sub, binary(Op::Add, Expr{8}, Expr{2}));
-  Expr e3 = binary(Op::Sub, std::move(e2), Expr{4});
-  return binary(Op::Add, std::move(e1), std::move(e3));
+  std::vector<std::optional<Expr>> exprs;
+  exprs.push_back(Expr{10});
+  exprs.push_back(std::nullopt);
+
+  // ((5 - 7) + (-(8 + 2) - 4))
+  // = -2 + (-10 - 4)
+  // = -16
+  exprs.push_back(binary(Op::Add, binary(Op::Sub, 5, 7), binary(Op::Sub, unary(Op::Sub, binary(Op::Add, 8, 2)), 4)));
+
+  // (10 * -16)
+  return accumuate(AccOp::Mul, std::move(exprs));
 }
 
 TEST(Expr, test) {
@@ -73,4 +100,4 @@ TEST(Expr, test) {
   EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
 }
 
-TEST(Expr, eval) { EXPECT_EQ(-16, eval(make_big_expr())); }
+TEST(Expr, eval) { EXPECT_EQ(-160, eval(make_big_expr())); }

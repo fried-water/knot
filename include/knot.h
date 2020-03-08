@@ -370,6 +370,24 @@ struct can_visit<std::tuple<Visitor, Args...>, std::void_t<decltype(std::declval
 template <typename Visitor, typename... Args>
 inline constexpr bool can_visit_v = can_visit<std::tuple<Visitor, Args...>>::value;
 
+template <typename Result, typename T, typename = void>
+struct evaluate_result {
+  using type = Result;
+};
+
+template <typename Result, typename T>
+using evaluate_result_t = typename evaluate_result<Result, T>::type;
+
+template <typename Result, typename T>
+struct evaluate_result<Result, std::optional<T>> {
+  using type = std::optional<evaluate_result_t<Result, T>>;
+};
+
+template <typename Result, typename T>
+struct evaluate_result<Result, T, std::enable_if_t<is_range_v<T>>> {
+  using type = std::vector<evaluate_result_t<Result, typename T::value_type>>;
+};
+
 template <std::size_t I, typename Seq>
 struct prepend_seq;
 
@@ -403,17 +421,16 @@ template <typename Visitor, typename Tuple>
 using eval_visit_filter_t =
     typename eval_visit_filter_impl<Visitor, Tuple, std::make_index_sequence<std::tuple_size_v<Tuple>>>::type;
 
-template <typename Result, typename T, typename Visitor, std::size_t... Is>
-auto evaluate_expand_array(const T& t, Visitor visitor, std::array<Result, sizeof...(Is)>&& results,
-                           std::index_sequence<Is...>) {
-  return visitor(t, std::move(results[Is])...);
+template <typename Result, typename T, typename Visitor, typename Tuple, std::size_t... Is>
+auto evaluate_expand_tuple(const T& t, Visitor visitor, Tuple&& tuple, std::index_sequence<Is...>) {
+  return visitor(t, std::get<Is>(std::move(tuple))...);
 }
 
 template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
 auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
   const auto& tuple = as_tuple(t);
-  return evaluate_expand_array(t, visitor, std::array<Result, sizeof...(Is)>{eval(std::get<Is>(tuple), visitor)...},
-                               std::make_index_sequence<sizeof...(Is)>());
+  return evaluate_expand_tuple<Result>(t, visitor, std::make_tuple(eval(std::get<Is>(tuple), visitor)...),
+                                       std::make_index_sequence<sizeof...(Is)>());
 }
 
 template <typename T, typename F>
@@ -480,7 +497,7 @@ IT serialize(const Outer& t, IT out) {
   };
 
   return accumulate(t,
-                    [&](const auto& value, IT out) {
+                    [&](IT out, const auto& value) {
                       using T = std::decay_t<decltype(value)>;
                       if constexpr (details::is_primitive_type_v<T>) {
                         return serialize_primitive(value, out);
@@ -620,7 +637,7 @@ std::ostream& debug_string(std::ostream& os, const T& t) {
 
 template <typename Outer>
 std::size_t hash_value(const Outer& t) {
-  return accumulate<std::size_t>(t, [&](const auto& value, const std::size_t hash) {
+  return accumulate<std::size_t>(t, [&](const std::size_t hash, const auto& value) {
     using T = std::decay_t<decltype(value)>;
     if constexpr (details::is_primitive_type_v<T> ||
                   (!details::is_knot_supported_type_v<T> && details::is_std_hashable_v<T>)) {
@@ -662,18 +679,18 @@ void visit(const T& t, Visitor visitor) {
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc) {
   visit(t, [&](const auto& value) {
-    if constexpr (details::can_visit_v<F, decltype(value), Result>) {
-      acc = f(value, std::move(acc));
+    if constexpr (details::can_visit_v<F, Result, decltype(value)>) {
+      acc = f(std::move(acc), value);
     }
   });
   return acc;
 }
 
 template <typename Result, typename T, typename Visitor>
-Result evaluate(const T& t, Visitor visitor) {
+details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
   static_assert(details::is_knot_supported_type_v<T> || details::can_visit_v<Visitor, T>);
 
-  // Allow visitor to override and prevent recursion for specific types (even unsupported types)
+  // Allow visitor to override and prevent recursion for specific types (even knot unsupported types)
   if constexpr (details::can_visit_v<Visitor, T>) {
     return visitor(t);
   } else if constexpr (details::is_primitive_type_v<T>) {
@@ -688,26 +705,27 @@ Result evaluate(const T& t, Visitor visitor) {
         t, visitor, [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
         details::eval_visit_filter_t<Visitor, std::decay_t<decltype(details::as_tuple(t))>>{});
   } else if constexpr (details::is_variant_v<T>) {
-    auto result = std::visit([&](const auto& val) { return evaluate<Result>(val, visitor); }, t);
-    if constexpr (details::can_visit_v<Visitor, T, decltype(result)>) {
-      return visitor(t, std::move(result));
-    } else {
-      return result;
-    }
-  } else if constexpr (details::is_maybe_type_v<T>) {
-    if (!static_cast<bool>(t)) throw 0;
-
-    auto result = evaluate<Result>(*t, visitor);
-    if constexpr (details::can_visit_v<Visitor, T, decltype(result)>) {
-      return visitor(t, std::move(result));
-    } else {
-      return result;
-    }
+    return std::visit([&](const auto& val) { return evaluate<Result>(val, visitor); }, t);
+  } else if constexpr (details::is_optional_v<T>) {
+    return t ? std::make_optional(evaluate<Result>(*t, visitor)) : std::nullopt;
+  } else if constexpr (details::is_pointer_v<T>) {
+    // Special case pointers to not act like maybe types in evaluate() (aka assume not null)
+    // Recursive structs that you would want to evaluate require indirection to implement
+    // having every pointer require a null check would be less performant and less
+    // ergonomic since you would have to take an optional<Result> everytime
+    return evaluate<Result>(*t, visitor);
   } else if constexpr (details::is_range_v<T>) {
-    // TODO handle ranges
-    static_assert(!details::is_range_v<T>);
+    details::evaluate_result_t<Result, T> result_vec;
+    result_vec.reserve(std::distance(std::begin(t), std::end(t)));
+
+    for (const auto& val : t) {
+      result_vec.push_back(evaluate<Result>(val, visitor));
+    }
+
+    return result_vec;
+
   } else {
-    return Result{};
+    return details::evaluate_result_t<Result, T>{};
   }
 }
 
