@@ -66,6 +66,86 @@ auto as_tie(const std::pair<First, Second>& pair) {
   return std::tie(pair.first, pair.second);
 }
 
+template <typename>
+inline constexpr bool is_array_v = false;
+template <typename T, std::size_t N>
+inline constexpr bool is_array_v<std::array<T, N>> = true;
+
+template <typename>
+inline constexpr bool is_optional_v = false;
+template <typename T>
+inline constexpr bool is_optional_v<std::optional<T>> = true;
+
+struct filler {
+  // Exception for std::optional<T> is needed because optional has a constructor
+  // from U if U is convertable to T and filler is convertable to everything
+  template <typename T, typename = std::enable_if_t<!is_optional_v<T>>>
+  operator T();
+};
+
+template <typename T, typename Seq = std::index_sequence<>, typename = void>
+struct aggregate_arity : Seq {};
+
+template <typename T, std::size_t... Is>
+struct aggregate_arity<T, std::index_sequence<Is...>,
+                       std::void_t<decltype(T{std::declval<filler>(), (Is, std::declval<filler>())...})>>
+    : aggregate_arity<T, std::index_sequence<Is..., sizeof...(Is)>> {};
+
+template <typename T>
+constexpr std::enable_if_t<std::is_aggregate_v<T>, std::size_t> arity() {
+  return aggregate_arity<std::decay_t<T>>::size();
+}
+
+// This auto generates as_tie() for aggregate structs with no base classes
+template <typename T>
+auto as_tie(const T& t, std::enable_if_t<std::is_aggregate_v<T> && !is_array_v<T> && !std::is_polymorphic_v<T> &&
+                                             // Techinically it can't have any base classes
+                                             // no way to check that generically
+                                             arity<T>() <= 12,
+                                         int> = 0) {
+  constexpr std::size_t my_arity = arity<T>();
+
+  if constexpr (my_arity == 0) {
+    return std::tie();
+  } else if constexpr (my_arity == 1) {
+    const auto& [a] = t;
+    return std::tie(a);
+  } else if constexpr (my_arity == 2) {
+    const auto& [a, b] = t;
+    return std::tie(a, b);
+  } else if constexpr (my_arity == 3) {
+    const auto& [a, b, c] = t;
+    return std::tie(a, b, c);
+  } else if constexpr (my_arity == 4) {
+    const auto& [a, b, c, d] = t;
+    return std::tie(a, b, c, d);
+  } else if constexpr (my_arity == 5) {
+    const auto& [a, b, c, d, e] = t;
+    return std::tie(a, b, c, d, e);
+  } else if constexpr (my_arity == 6) {
+    const auto& [a, b, c, d, e, f] = t;
+    return std::tie(a, b, c, d, e, f);
+  } else if constexpr (my_arity == 7) {
+    const auto& [a, b, c, d, e, f, g] = t;
+    return std::tie(a, b, c, d, e, f, g);
+  } else if constexpr (my_arity == 8) {
+    const auto& [a, b, c, d, e, f, g, h] = t;
+    return std::tie(a, b, c, d, e, f, g, h);
+  } else if constexpr (my_arity == 9) {
+    const auto& [a, b, c, d, e, f, g, h, i] = t;
+    return std::tie(a, b, c, d, e, f, g, h, i);
+  } else if constexpr (my_arity == 10) {
+    const auto& [a, b, c, d, e, f, g, h, i, j] = t;
+    return std::tie(a, b, c, d, e, f, g, h, i, j);
+  } else if constexpr (my_arity == 11) {
+    const auto& [a, b, c, d, e, f, g, h, i, j, k] = t;
+    return std::tie(a, b, c, d, e, f, g, h, i, j, k);
+  } else if constexpr (my_arity == 12) {
+    const auto& [a, b, c, d, e, f, g, h, i, j, k, l] = t;
+    return std::tie(a, b, c, d, e, f, g, h, i, j, k, l);
+  }
+}
+
 // Type Traits
 template <typename, typename = void>
 struct is_tieable : std::false_type {};
@@ -73,11 +153,6 @@ template <typename T>
 struct is_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::true_type {};
 template <typename T>
 inline constexpr bool is_tieable_v = is_tieable<T>::value;
-
-template <typename>
-inline constexpr bool is_array_v = false;
-template <typename T, std::size_t N>
-inline constexpr bool is_array_v<std::array<T, N>> = true;
 
 template <typename T>
 inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
@@ -95,11 +170,6 @@ template <typename>
 inline constexpr bool is_variant_v = false;
 template <typename... Ts>
 inline constexpr bool is_variant_v<std::variant<Ts...>> = true;
-
-template <typename>
-inline constexpr bool is_optional_v = false;
-template <typename T>
-inline constexpr bool is_optional_v<std::optional<T>> = true;
 
 template <typename, typename = void>
 struct is_range : std::false_type {};
@@ -380,23 +450,22 @@ IT serialize(const Outer& t, IT out) {
     return std::copy(array.begin(), array.end(), it);
   };
 
-  return accumulate(
-      t,
-      [&](const auto& value, IT out) {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (details::is_primitive_type_v<T>) {
-          return serialize_primitive(value, out);
-        } else if constexpr (details::is_variant_v<T>) {
-          return serialize_primitive(value.index(), out);
-        } else if constexpr (details::is_maybe_type_v<T>) {
-          return serialize_primitive(static_cast<bool>(value), out);
-        } else if constexpr (details::is_range_v<T>) {
-          return serialize_primitive(value.size(), out);
-        } else {
-          return out;
-        }
-      },
-      out);
+  return accumulate(t,
+                    [&](const auto& value, IT out) {
+                      using T = std::decay_t<decltype(value)>;
+                      if constexpr (details::is_primitive_type_v<T>) {
+                        return serialize_primitive(value, out);
+                      } else if constexpr (details::is_variant_v<T>) {
+                        return serialize_primitive(value.index(), out);
+                      } else if constexpr (details::is_maybe_type_v<T>) {
+                        return serialize_primitive(static_cast<bool>(value), out);
+                      } else if constexpr (details::is_range_v<T>) {
+                        return serialize_primitive(value.size(), out);
+                      } else {
+                        return out;
+                      }
+                    },
+                    out);
 }
 
 template <typename T, typename IT>
@@ -584,9 +653,9 @@ Result evaluate(const T& t, Visitor visitor) {
     }
   }
   if constexpr (details::is_product_type_v<T>) {
-    return details::evaluate_tuple<Result>(
-        t, visitor, [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
-        std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
+    return details::evaluate_tuple<Result>(t, visitor,
+                                           [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
+                                           std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
   } else if constexpr (details::is_variant_v<T>) {
     auto result = std::visit([&](const auto& val) { return evaluate<Result>(val, visitor); }, t);
     if constexpr (details::can_visit_v<Visitor, T, decltype(result)>) {
@@ -624,41 +693,55 @@ struct Hash {
   }
 };
 
-//
-struct Compareable {
-  template <typename T>
-  friend details::tie_enable<T, bool> operator==(const T& lhs, const T& rhs) {
-    using knot::details::as_tie;
-    return as_tie(lhs) == as_tie(rhs);
+#define KNOT_COMPAREABLE(U)                                                              \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator==(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) == as_tie(rhs);                                                 \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator!=(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) != as_tie(rhs);                                                 \
   }
 
-  template <typename T>
-  friend details::tie_enable<T, bool> operator!=(const T& lhs, const T& rhs) {
-    return as_tie(lhs) != as_tie(rhs);
+#define KNOT_ORDERED(U)                                                                  \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator==(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) == as_tie(rhs);                                                 \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator!=(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) != as_tie(rhs);                                                 \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator<(const T& rhs) const {                                                   \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) < as_tie(rhs);                                                  \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator<=(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) <= as_tie(rhs);                                                 \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator>(const T& rhs) const {                                                   \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) > as_tie(rhs);                                                  \
+  }                                                                                      \
+                                                                                         \
+  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
+  bool operator>=(const T& rhs) const {                                                  \
+    using knot::details::as_tie;                                                         \
+    return as_tie(*this) >= as_tie(rhs);                                                 \
   }
-};
-
-struct Ordered : Compareable {
-  template <typename T>
-  friend details::tie_enable<T, bool> operator<(const T& lhs, const T& rhs) {
-    return as_tie(lhs) < as_tie(rhs);
-  }
-
-  template <typename T>
-  friend details::tie_enable<T, bool> operator<=(const T& lhs, const T& rhs) {
-    return as_tie(lhs) <= as_tie(rhs);
-  }
-
-  template <typename T>
-  friend details::tie_enable<T, bool> operator>(const T& lhs, const T& rhs) {
-    return as_tie(lhs) > as_tie(rhs);
-  }
-
-  template <typename T>
-  friend details::tie_enable<T, bool> operator>=(const T& lhs, const T& rhs) {
-    return as_tie(lhs) >= as_tie(rhs);
-  }
-};
 
 }  // namespace knot
 

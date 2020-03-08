@@ -10,8 +10,6 @@ struct Node {
   std::vector<std::shared_ptr<Node>> children;
 };
 
-auto as_tie(const Node& node) { return std::tie(node.value, node.children); }
-
 std::shared_ptr<Node> make_node(int val) { return std::make_shared<Node>(Node{val}); }
 
 template <typename T>
@@ -26,7 +24,7 @@ std::optional<int> dfs_search(const T& node, int value) {
   return result;
 }
 
-enum class Topology { Tree, Acyclic, Cyclic};
+enum class Topology { Tree, Acyclic, Cyclic };
 
 template <typename T>
 Topology topology(const T& t) {

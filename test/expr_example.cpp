@@ -16,11 +16,8 @@ struct BinaryExpr {
   Expr rhs;
 };
 
-auto as_tie(const BinaryExpr& b) { return std::tie(b.op, b.lhs, b.rhs); }
-
 int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::accumulate(
-      expr, [desired_op](Op op, int count) { return op == desired_op ? count + 1 : count; }, 0);
+  return knot::accumulate(expr, [desired_op](Op op, int count) { return op == desired_op ? count + 1 : count; }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
