@@ -384,8 +384,19 @@ struct evaluate_result<Result, std::optional<T>> {
 };
 
 template <typename Result, typename T>
+struct evaluate_result<Result, T, std::enable_if_t<is_pointer_v<T>>> {
+  using type = evaluate_result_t<Result, std::decay_t<decltype(*std::declval<T>())>>;
+};
+
+
+template <typename Result, typename T>
 struct evaluate_result<Result, T, std::enable_if_t<is_range_v<T>>> {
   using type = std::vector<evaluate_result_t<Result, typename T::value_type>>;
+};
+
+template <typename Result, typename... Ts>
+struct evaluate_result<Result, std::variant<Ts...>> {
+  using type = evaluate_result_t<Result, std::common_type_t<evaluate_result_t<Result, Ts>...>>;
 };
 
 template <std::size_t I, typename Seq>
@@ -705,7 +716,7 @@ details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
         t, visitor, [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
         details::eval_visit_filter_t<Visitor, std::decay_t<decltype(details::as_tuple(t))>>{});
   } else if constexpr (details::is_variant_v<T>) {
-    return std::visit([&](const auto& val) { return evaluate<Result>(val, visitor); }, t);
+    return std::visit([&](const auto& val) -> details::evaluate_result_t<Result, T> { return evaluate<Result>(val, visitor); }, t);
   } else if constexpr (details::is_optional_v<T>) {
     return t ? std::make_optional(evaluate<Result>(*t, visitor)) : std::nullopt;
   } else if constexpr (details::is_pointer_v<T>) {
