@@ -26,13 +26,19 @@ In addition to structs with `as_tie(const T&)`, knot also recusively supports mo
 enum class Op {Add, Sub};
 
 struct BinaryExpr;
+struct UnaryExpr;
 
-using Expr = std::variant<std::unique_ptr<BinaryExpr>, int>;
+using Expr = std::variant<std::unique_ptr<BinaryExpr>, std::unique_ptr<UnaryExpr>, int>;
 
 struct BinaryExpr {
   Op op;
   Expr lhs;
   Expr rhs;
+};
+
+struct UnaryExpr {
+  Op op;
+  Expr child;
 };
 
 void example(const Expr& expr) {
@@ -56,5 +62,17 @@ void dump_leaf_values(const Expr& expr) {
   return knot::visit(expr, [](int leaf) {
     std::cout << "Leaf: " << leaf << '\n'; 
   });
+}
+
+int eval(const Expr& expr) {
+  struct EvalVisitor {
+    int operator()(const BinaryExpr& expr, int lhs, int rhs) const {
+      return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
+    }
+    int operator()(const UnaryExpr& expr, int child) const {
+      return expr.op == Op::Add ? child : -child;
+    }
+  };
+  return knot::evaluate<int>(expr, EvalVisitor{});
 }
 ```

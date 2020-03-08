@@ -370,6 +370,39 @@ struct can_visit<std::tuple<Visitor, Args...>, std::void_t<decltype(std::declval
 template <typename Visitor, typename... Args>
 inline constexpr bool can_visit_v = can_visit<std::tuple<Visitor, Args...>>::value;
 
+template <std::size_t I, typename Seq>
+struct prepend_seq;
+
+template <std::size_t I, std::size_t... Is>
+struct prepend_seq<I, std::index_sequence<Is...>> {
+  using type = std::index_sequence<I, Is...>;
+};
+
+template <typename Visitor, typename Tuple, typename Seq, typename = void>
+struct eval_visit_filter_impl;
+
+template <typename Visitor>
+struct eval_visit_filter_impl<Visitor, std::tuple<>, std::index_sequence<>> {
+  using type = std::index_sequence<>;
+};
+
+template <typename Visitor, typename T, typename... Ts, std::size_t I, std::size_t... Is>
+struct eval_visit_filter_impl<Visitor, std::tuple<T, Ts...>, std::index_sequence<I, Is...>,
+                              std::enable_if_t<is_primitive_type_v<std::decay_t<T>> && !can_visit_v<Visitor, T>>> {
+  using type = typename eval_visit_filter_impl<Visitor, std::tuple<Ts...>, std::index_sequence<Is...>>::type;
+};
+
+template <typename Visitor, typename T, typename... Ts, std::size_t I, std::size_t... Is>
+struct eval_visit_filter_impl<Visitor, std::tuple<T, Ts...>, std::index_sequence<I, Is...>,
+                              std::enable_if_t<!is_primitive_type_v<std::decay_t<T>> || can_visit_v<Visitor, T>>> {
+  using type = typename prepend_seq<
+      I, typename eval_visit_filter_impl<Visitor, std::tuple<Ts...>, std::index_sequence<Is...>>::type>::type;
+};
+
+template <typename Visitor, typename Tuple>
+using eval_visit_filter_t =
+    typename eval_visit_filter_impl<Visitor, Tuple, std::make_index_sequence<std::tuple_size_v<Tuple>>>::type;
+
 template <typename Result, typename T, typename Visitor, std::size_t... Is>
 auto evaluate_expand_array(const T& t, Visitor visitor, std::array<Result, sizeof...(Is)>&& results,
                            std::index_sequence<Is...>) {
@@ -379,12 +412,8 @@ auto evaluate_expand_array(const T& t, Visitor visitor, std::array<Result, sizeo
 template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
 auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
   const auto& tuple = as_tuple(t);
-  std::array<Result, sizeof...(Is)> result{eval(std::get<Is>(tuple), visitor)...};
-  if constexpr (sizeof...(Is) == 1 && !details::can_visit_v<Visitor, decltype(std::get<0>(tuple))>) {
-    return result[0];
-  } else {
-    return evaluate_expand_array(t, visitor, std::move(result), std::make_index_sequence<sizeof...(Is)>());
-  }
+  return evaluate_expand_array(t, visitor, std::array<Result, sizeof...(Is)>{eval(std::get<Is>(tuple), visitor)...},
+                               std::make_index_sequence<sizeof...(Is)>());
 }
 
 template <typename T, typename F>
@@ -642,20 +671,22 @@ Result accumulate(const T& t, F f, Result acc) {
 
 template <typename Result, typename T, typename Visitor>
 Result evaluate(const T& t, Visitor visitor) {
-  static_assert(details::is_knot_supported_type_v<T>);
+  static_assert(details::is_knot_supported_type_v<T> || details::can_visit_v<Visitor, T>);
 
-  if constexpr (details::is_primitive_type_v<T>) {
+  // Allow visitor to override and prevent recursion for specific types (even unsupported types)
+  if constexpr (details::can_visit_v<Visitor, T>) {
+    return visitor(t);
+  } else if constexpr (details::is_primitive_type_v<T>) {
     static_assert(details::can_visit_v<Visitor, T> || std::is_same_v<T, Result>);
     if constexpr (details::can_visit_v<Visitor, T>) {
       return visitor(t);
     } else {
       return t;
     }
-  }
-  if constexpr (details::is_product_type_v<T>) {
-    return details::evaluate_tuple<Result>(t, visitor,
-                                           [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
-                                           std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
+  } else if constexpr (details::is_product_type_v<T>) {
+    return details::evaluate_tuple<Result>(
+        t, visitor, [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
+        details::eval_visit_filter_t<Visitor, std::decay_t<decltype(details::as_tuple(t))>>{});
   } else if constexpr (details::is_variant_v<T>) {
     auto result = std::visit([&](const auto& val) { return evaluate<Result>(val, visitor); }, t);
     if constexpr (details::can_visit_v<Visitor, T, decltype(result)>) {

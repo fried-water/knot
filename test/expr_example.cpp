@@ -7,13 +7,19 @@
 enum class Op { Add, Sub };
 
 struct BinaryExpr;
+struct UnaryExpr;
 
-using Expr = std::variant<std::unique_ptr<BinaryExpr>, int>;
+using Expr = std::variant<std::unique_ptr<BinaryExpr>, std::unique_ptr<UnaryExpr>, int>;
 
 struct BinaryExpr {
   Op op;
   Expr lhs;
   Expr rhs;
+};
+
+struct UnaryExpr {
+  Op op;
+  Expr child;
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {
@@ -24,21 +30,35 @@ void dump_leaf_values(const Expr& expr) {
   return knot::visit(expr, [](int leaf) { std::cout << "Leaf: " << leaf << '\n'; });
 }
 
-struct EvalVisitor {
-  int operator()(const BinaryExpr& expr, int op, int lhs, int rhs) const {
-    return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
-  }
+int eval(const Expr& expr) {
+  struct EvalVisitor {
+    int operator()(const BinaryExpr& expr, int lhs, int rhs) const {
+      return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
+    }
+    int operator()(const UnaryExpr& expr, int child) const { return expr.op == Op::Add ? child : -child; }
+  };
+  return knot::evaluate<int>(expr, EvalVisitor{});
+}
 
-  int operator()(Op op) const { return 0; }
-};
+Expr binary(Op op, Expr lhs, Expr rhs) {
+  return std::make_unique<BinaryExpr>(BinaryExpr{op, std::move(lhs), std::move(rhs)});
+}
+Expr unary(Op op, Expr child) { return std::make_unique<UnaryExpr>(UnaryExpr{op, std::move(child)}); }
+
+// ((5 - 7) + (-(8 + 2) - 4))
+// = -2 + (-10 - 4)
+// = -16
+auto make_big_expr() {
+  Expr e1 = binary(Op::Sub, Expr{5}, Expr{7});
+  Expr e2 = unary(Op::Sub, binary(Op::Add, Expr{8}, Expr{2}));
+  Expr e3 = binary(Op::Sub, std::move(e2), Expr{4});
+  return binary(Op::Add, std::move(e1), std::move(e3));
+}
 
 TEST(Expr, test) {
-  Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{5}, Expr{7}});
-  Expr e2 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{8}, Expr{2}});
-  Expr e3 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, std::move(e2), Expr{4}});
-  const Expr expr = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, std::move(e1), std::move(e3)});
+  const Expr expr = make_big_expr();
 
-  EXPECT_EQ(1, num_ops(expr, Op::Add));
+  EXPECT_EQ(2, num_ops(expr, Op::Add));
   EXPECT_EQ(3, num_ops(expr, Op::Sub));
 
   dump_leaf_values(expr);
@@ -53,11 +73,4 @@ TEST(Expr, test) {
   EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
 }
 
-TEST(Expr, eval) {
-  Expr e1 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{5}, Expr{7}});
-  Expr e2 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, Expr{8}, Expr{2}});
-  Expr e3 = std::make_unique<BinaryExpr>(BinaryExpr{Op::Sub, std::move(e2), Expr{4}});
-  const Expr expr = std::make_unique<BinaryExpr>(BinaryExpr{Op::Add, std::move(e1), std::move(e3)});
-
-  EXPECT_EQ(0, knot::evaluate<int>(expr, EvalVisitor{}));
-}
+TEST(Expr, eval) { EXPECT_EQ(-16, eval(make_big_expr())); }
