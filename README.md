@@ -66,10 +66,14 @@ void dump_leaf_values(const Expr& expr) {
 
 int eval(const Expr& expr) {
   struct EvalVisitor {
-    int operator()(const BinaryExpr& expr, int lhs, int rhs) const {
+    int operator()(const BinaryExpr& expr) const {
+      const int lhs = knot::evaluate<int>(expr.lhs, EvalVisitor{});
+      const int rhs = knot::evaluate<int>(expr.rhs, EvalVisitor{});
       return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
     }
-    int operator()(const UnaryExpr& expr, int child) const {
+
+    int operator()(const UnaryExpr& expr) const {
+      const int child = knot::evaluate<int>(expr.child, EvalVisitor{});
       return expr.op == Op::Add ? child : -child;
     }
   };

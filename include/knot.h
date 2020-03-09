@@ -370,79 +370,39 @@ struct can_visit<std::tuple<Visitor, Args...>, std::void_t<decltype(std::declval
 template <typename Visitor, typename... Args>
 inline constexpr bool can_visit_v = can_visit<std::tuple<Visitor, Args...>>::value;
 
-template <typename Result, typename T, typename = void>
+template <typename Result, typename Visitor, typename T, typename = void>
 struct evaluate_result {
   using type = Result;
 };
 
-template <typename Result, typename T>
-using evaluate_result_t = typename evaluate_result<Result, T>::type;
+template <typename Result, typename Visitor, typename T>
+using evaluate_result_t = typename evaluate_result<Result, Visitor, T>::type;
 
-template <typename Result, typename T>
-struct evaluate_result<Result, std::optional<T>> {
-  using type = std::optional<evaluate_result_t<Result, T>>;
+template <typename Result, typename Visitor, typename T>
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<can_visit_v<Visitor, T>>> {
+  using type = std::decay_t<decltype(std::declval<Visitor>()(std::declval<T>()))>;
 };
 
-template <typename Result, typename T>
-struct evaluate_result<Result, T, std::enable_if_t<is_pointer_v<T>>> {
-  using type = evaluate_result_t<Result, std::decay_t<decltype(*std::declval<T>())>>;
+template <typename Result, typename Visitor, typename T>
+struct evaluate_result<Result, Visitor, std::optional<T>, std::enable_if_t<!can_visit_v<Visitor, std::optional<T>>>> {
+  using type = std::optional<evaluate_result_t<Result, Visitor, T>>;
 };
 
-
-template <typename Result, typename T>
-struct evaluate_result<Result, T, std::enable_if_t<is_range_v<T>>> {
-  using type = std::vector<evaluate_result_t<Result, typename T::value_type>>;
+template <typename Result, typename Visitor, typename T>
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_pointer_v<T> && !can_visit_v<Visitor, T>>> {
+  using type = evaluate_result_t<Result, Visitor, std::decay_t<decltype(*std::declval<T>())>>;
 };
 
-template <typename Result, typename... Ts>
-struct evaluate_result<Result, std::variant<Ts...>> {
-  using type = evaluate_result_t<Result, std::common_type_t<evaluate_result_t<Result, Ts>...>>;
+template <typename Result, typename Visitor, typename T>
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_range_v<T> && !can_visit_v<Visitor, T>>> {
+  using type = std::vector<evaluate_result_t<Result, Visitor, typename T::value_type>>;
 };
 
-template <std::size_t I, typename Seq>
-struct prepend_seq;
-
-template <std::size_t I, std::size_t... Is>
-struct prepend_seq<I, std::index_sequence<Is...>> {
-  using type = std::index_sequence<I, Is...>;
+template <typename Result, typename Visitor, typename... Ts>
+struct evaluate_result<Result, Visitor, std::variant<Ts...>,
+                       std::enable_if_t<!can_visit_v<Visitor, std::variant<Ts...>>>> {
+  using type = std::common_type_t<evaluate_result_t<Result, Visitor, Ts>...>;
 };
-
-template <typename Visitor, typename Tuple, typename Seq, typename = void>
-struct eval_visit_filter_impl;
-
-template <typename Visitor>
-struct eval_visit_filter_impl<Visitor, std::tuple<>, std::index_sequence<>> {
-  using type = std::index_sequence<>;
-};
-
-template <typename Visitor, typename T, typename... Ts, std::size_t I, std::size_t... Is>
-struct eval_visit_filter_impl<Visitor, std::tuple<T, Ts...>, std::index_sequence<I, Is...>,
-                              std::enable_if_t<is_primitive_type_v<std::decay_t<T>> && !can_visit_v<Visitor, T>>> {
-  using type = typename eval_visit_filter_impl<Visitor, std::tuple<Ts...>, std::index_sequence<Is...>>::type;
-};
-
-template <typename Visitor, typename T, typename... Ts, std::size_t I, std::size_t... Is>
-struct eval_visit_filter_impl<Visitor, std::tuple<T, Ts...>, std::index_sequence<I, Is...>,
-                              std::enable_if_t<!is_primitive_type_v<std::decay_t<T>> || can_visit_v<Visitor, T>>> {
-  using type = typename prepend_seq<
-      I, typename eval_visit_filter_impl<Visitor, std::tuple<Ts...>, std::index_sequence<Is...>>::type>::type;
-};
-
-template <typename Visitor, typename Tuple>
-using eval_visit_filter_t =
-    typename eval_visit_filter_impl<Visitor, Tuple, std::make_index_sequence<std::tuple_size_v<Tuple>>>::type;
-
-template <typename Result, typename T, typename Visitor, typename Tuple, std::size_t... Is>
-auto evaluate_expand_tuple(const T& t, Visitor visitor, Tuple&& tuple, std::index_sequence<Is...>) {
-  return visitor(t, std::get<Is>(std::move(tuple))...);
-}
-
-template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
-auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
-  const auto& tuple = as_tuple(t);
-  return evaluate_expand_tuple<Result>(t, visitor, std::make_tuple(eval(std::get<Is>(tuple), visitor)...),
-                                       std::make_index_sequence<sizeof...(Is)>());
-}
 
 template <typename T, typename F>
 std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent);
@@ -698,10 +658,12 @@ Result accumulate(const T& t, F f, Result acc) {
 }
 
 template <typename Result, typename T, typename Visitor>
-details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
+details::evaluate_result_t<Result, Visitor, T> evaluate(const T& t, Visitor visitor) {
   static_assert(details::is_knot_supported_type_v<T> || details::can_visit_v<Visitor, T>);
+  static_assert(!details::is_product_type_v<T> || details::can_visit_v<Visitor, T>);
 
   // Allow visitor to override and prevent recursion for specific types (even knot unsupported types)
+  // Product types must be visitable
   if constexpr (details::can_visit_v<Visitor, T>) {
     return visitor(t);
   } else if constexpr (details::is_primitive_type_v<T>) {
@@ -711,12 +673,12 @@ details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
     } else {
       return t;
     }
-  } else if constexpr (details::is_product_type_v<T>) {
-    return details::evaluate_tuple<Result>(
-        t, visitor, [](const auto& t, auto visitor) { return evaluate<Result>(t, visitor); },
-        details::eval_visit_filter_t<Visitor, std::decay_t<decltype(details::as_tuple(t))>>{});
   } else if constexpr (details::is_variant_v<T>) {
-    return std::visit([&](const auto& val) -> details::evaluate_result_t<Result, T> { return evaluate<Result>(val, visitor); }, t);
+    return std::visit(
+        [&](const auto& val) -> details::evaluate_result_t<Result, Visitor, T> {
+          return evaluate<Result>(val, visitor);
+        },
+        t);
   } else if constexpr (details::is_optional_v<T>) {
     return t ? std::make_optional(evaluate<Result>(*t, visitor)) : std::nullopt;
   } else if constexpr (details::is_pointer_v<T>) {
@@ -726,7 +688,7 @@ details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
     // ergonomic since you would have to take an optional<Result> everytime
     return evaluate<Result>(*t, visitor);
   } else if constexpr (details::is_range_v<T>) {
-    details::evaluate_result_t<Result, T> result_vec;
+    details::evaluate_result_t<Result, Visitor, T> result_vec;
     result_vec.reserve(std::distance(std::begin(t), std::end(t)));
 
     for (const auto& val : t) {
@@ -736,7 +698,7 @@ details::evaluate_result_t<Result, T> evaluate(const T& t, Visitor visitor) {
     return result_vec;
 
   } else {
-    return details::evaluate_result_t<Result, T>{};
+    return details::evaluate_result_t<Result, Visitor, T>{};
   }
 }
 
