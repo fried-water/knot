@@ -217,8 +217,6 @@ auto unary_plus(PrimitiveValue val) { return std::make_unique<UnaryPlusExpr>(Una
 auto unary_minus(PrimitiveValue val) { return std::make_unique<UnaryMinusExpr>(UnaryMinusExpr{val}); }
 auto unary_negate(PrimitiveValue val) { return std::make_unique<UnaryNegateExpr>(UnaryNegateExpr{val}); }
 
-// auto unary_negate(PrimitiveValue val) { return std::make_unique<UnaryNegateExpr>(UnaryNegateExpr{val}); }
-
 }  // namespace
 
 auto check_root(const Root& root) { return typecheck(root); }
