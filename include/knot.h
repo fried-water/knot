@@ -1,6 +1,11 @@
 #ifndef KNOT_H
 #define KNOT_H
 
+#include "knot_auto_as_tie.h"
+#include "knot_ops.h"
+#include "knot_type_traits.h"
+#include "knot_visit_variant.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -66,119 +71,12 @@ auto as_tie(const std::pair<First, Second>& pair) {
   return std::tie(pair.first, pair.second);
 }
 
-template <typename>
-inline constexpr bool is_array_v = false;
-template <typename T, std::size_t N>
-inline constexpr bool is_array_v<std::array<T, N>> = true;
-
-template <typename>
-inline constexpr bool is_optional_v = false;
-template <typename T>
-inline constexpr bool is_optional_v<std::optional<T>> = true;
-
-struct filler {
-  // Exception for std::optional<T> is needed because optional has a constructor
-  // from U if U is convertable to T and filler is convertable to everything
-  template <typename T, typename = std::enable_if_t<!is_optional_v<T>>>
-  operator T();
-};
-
-template <typename T, typename Seq = std::index_sequence<>, typename = void>
-struct aggregate_arity : Seq {};
-
-template <typename T, std::size_t... Is>
-struct aggregate_arity<T, std::index_sequence<Is...>,
-                       std::void_t<decltype(T{std::declval<filler>(), (Is, std::declval<filler>())...})>>
-    : aggregate_arity<T, std::index_sequence<Is..., sizeof...(Is)>> {};
-
-template <typename T>
-constexpr std::enable_if_t<std::is_aggregate_v<T>, std::size_t> arity() {
-  return aggregate_arity<std::decay_t<T>>::size();
-}
-
-// This auto generates as_tie() for aggregate structs with no base classes
-template <typename T>
-auto as_tie(const T& t, std::enable_if_t<std::is_aggregate_v<T> && !is_array_v<T> && !std::is_polymorphic_v<T> &&
-                                             // Techinically it can't have any base classes
-                                             // no way to check that generically
-                                             arity<T>() <= 12,
-                                         int> = 0) {
-  constexpr std::size_t my_arity = arity<T>();
-
-  if constexpr (my_arity == 0) {
-    return std::tie();
-  } else if constexpr (my_arity == 1) {
-    const auto& [a] = t;
-    return std::tie(a);
-  } else if constexpr (my_arity == 2) {
-    const auto& [a, b] = t;
-    return std::tie(a, b);
-  } else if constexpr (my_arity == 3) {
-    const auto& [a, b, c] = t;
-    return std::tie(a, b, c);
-  } else if constexpr (my_arity == 4) {
-    const auto& [a, b, c, d] = t;
-    return std::tie(a, b, c, d);
-  } else if constexpr (my_arity == 5) {
-    const auto& [a, b, c, d, e] = t;
-    return std::tie(a, b, c, d, e);
-  } else if constexpr (my_arity == 6) {
-    const auto& [a, b, c, d, e, f] = t;
-    return std::tie(a, b, c, d, e, f);
-  } else if constexpr (my_arity == 7) {
-    const auto& [a, b, c, d, e, f, g] = t;
-    return std::tie(a, b, c, d, e, f, g);
-  } else if constexpr (my_arity == 8) {
-    const auto& [a, b, c, d, e, f, g, h] = t;
-    return std::tie(a, b, c, d, e, f, g, h);
-  } else if constexpr (my_arity == 9) {
-    const auto& [a, b, c, d, e, f, g, h, i] = t;
-    return std::tie(a, b, c, d, e, f, g, h, i);
-  } else if constexpr (my_arity == 10) {
-    const auto& [a, b, c, d, e, f, g, h, i, j] = t;
-    return std::tie(a, b, c, d, e, f, g, h, i, j);
-  } else if constexpr (my_arity == 11) {
-    const auto& [a, b, c, d, e, f, g, h, i, j, k] = t;
-    return std::tie(a, b, c, d, e, f, g, h, i, j, k);
-  } else if constexpr (my_arity == 12) {
-    const auto& [a, b, c, d, e, f, g, h, i, j, k, l] = t;
-    return std::tie(a, b, c, d, e, f, g, h, i, j, k, l);
-  }
-}
-
-// Type Traits
 template <typename, typename = void>
 struct is_tieable : std::false_type {};
 template <typename T>
 struct is_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::true_type {};
 template <typename T>
 inline constexpr bool is_tieable_v = is_tieable<T>::value;
-
-template <typename T>
-inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
-template <typename T, typename Del>
-inline constexpr bool is_pointer_v<std::unique_ptr<T, Del>> = true;
-template <typename T>
-inline constexpr bool is_pointer_v<std::shared_ptr<T>> = true;
-
-template <typename>
-inline constexpr bool is_tuple_v = false;
-template <typename... Ts>
-inline constexpr bool is_tuple_v<std::tuple<Ts...>> = true;
-
-template <typename>
-inline constexpr bool is_variant_v = false;
-template <typename... Ts>
-inline constexpr bool is_variant_v<std::variant<Ts...>> = true;
-
-template <typename, typename = void>
-struct is_range : std::false_type {};
-template <typename T>
-struct is_range<T, std::void_t<decltype(std::begin(std::declval<T>())), decltype(std::end(std::declval<T>()))>>
-    : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_range_v = is_range<T>::value;
 
 // We treat tuples, pairs, and tieable structs as product types
 template <typename T>
@@ -194,20 +92,6 @@ inline constexpr bool is_primitive_type_v = std::is_arithmetic_v<T> || std::is_e
 template <typename T>
 inline constexpr bool is_knot_supported_type_v =
     is_product_type_v<T> || is_variant_v<T> || is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
-
-template <typename, typename = void>
-struct is_reserveable : std::false_type {};
-template <typename T>
-struct is_reserveable<T, std::void_t<decltype(std::declval<T>().reserve(0))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_reserveable_v = is_reserveable<T>::value;
-
-template <typename, typename = void>
-struct is_std_hashable : std::false_type {};
-template <typename T>
-struct is_std_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_std_hashable_v = is_std_hashable<T>::value;
 
 template <typename T, typename T2 = void>
 using tie_enable = std::enable_if_t<is_tieable_v<T>, T2>;
@@ -388,6 +272,16 @@ struct evaluate_result<Result, Visitor, std::optional<T>, std::enable_if_t<!can_
   using type = std::optional<evaluate_result_t<Result, Visitor, T>>;
 };
 
+template <typename Result, typename Visitor, typename T1, typename T2>
+struct evaluate_result<Result, Visitor, std::pair<T1, T2>, std::enable_if_t<!can_visit_v<Visitor, std::pair<T1, T2>>>> {
+  using type = std::tuple<evaluate_result_t<Result, Visitor, T1>, evaluate_result_t<Result, Visitor, T2>>;
+};
+
+template <typename Result, typename Visitor, typename... Ts>
+struct evaluate_result<Result, Visitor, std::tuple<Ts...>, std::enable_if_t<!can_visit_v<Visitor, std::tuple<Ts...>>>> {
+  using type = std::tuple<evaluate_result_t<Result, Visitor, Ts>...>;
+};
+
 template <typename Result, typename Visitor, typename T>
 struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_pointer_v<T> && !can_visit_v<Visitor, T>>> {
   using type = evaluate_result_t<Result, Visitor, std::decay_t<decltype(*std::declval<T>())>>;
@@ -403,6 +297,22 @@ struct evaluate_result<Result, Visitor, std::variant<Ts...>,
                        std::enable_if_t<!can_visit_v<Visitor, std::variant<Ts...>>>> {
   using type = std::common_type_t<evaluate_result_t<Result, Visitor, Ts>...>;
 };
+
+template <typename Result, typename T, typename Visitor, typename... Ts, std::size_t... Is>
+auto evaluate_expand_tuple(const T& t, Visitor visitor, std::tuple<Ts...>&& tuple, std::index_sequence<Is...>) {
+  if constexpr (can_visit_v<Visitor, T, Ts...>) {
+    return visitor(t, std::get<Is>(std::move(tuple))...);
+  } else {
+    return std::move(tuple);
+  }
+}
+
+template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
+auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
+  const auto& tuple = as_tuple(t);
+  return evaluate_expand_tuple<Result>(t, visitor, std::make_tuple(eval(std::get<Is>(tuple))...),
+                                       std::make_index_sequence<sizeof...(Is)>());
+}
 
 template <typename T, typename F>
 std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent);
@@ -660,27 +570,25 @@ Result accumulate(const T& t, F f, Result acc) {
 template <typename Result, typename T, typename Visitor>
 details::evaluate_result_t<Result, Visitor, T> evaluate(const T& t, Visitor visitor) {
   static_assert(details::is_knot_supported_type_v<T> || details::can_visit_v<Visitor, T>);
-  static_assert(!details::is_product_type_v<T> || details::can_visit_v<Visitor, T>);
+
+  auto eval = [&visitor](const auto& t) { return evaluate<Result>(t, visitor); };
 
   // Allow visitor to override and prevent recursion for specific types (even knot unsupported types)
-  // Product types must be visitable
   if constexpr (details::can_visit_v<Visitor, T>) {
     return visitor(t);
+  } else if constexpr (details::can_visit_v<Visitor, T, decltype(eval)>) {
+    return visitor(t, eval);
   } else if constexpr (details::is_primitive_type_v<T>) {
-    static_assert(details::can_visit_v<Visitor, T> || std::is_same_v<T, Result>);
-    if constexpr (details::can_visit_v<Visitor, T>) {
-      return visitor(t);
-    } else {
-      return t;
-    }
+    static_assert(std::is_same_v<T, Result>);
+    return t;
+  } else if constexpr (details::is_product_type_v<T>) {
+    return details::evaluate_tuple<Result>(
+        t, visitor, eval, std::make_index_sequence<std::tuple_size_v<std::decay_t<decltype(details::as_tuple(t))>>>{});
   } else if constexpr (details::is_variant_v<T>) {
-    return std::visit(
-        [&](const auto& val) -> details::evaluate_result_t<Result, Visitor, T> {
-          return evaluate<Result>(val, visitor);
-        },
-        t);
+    return visit_variant(t,
+                         [&](const auto& val) -> details::evaluate_result_t<Result, Visitor, T> { return eval(val); });
   } else if constexpr (details::is_optional_v<T>) {
-    return t ? std::make_optional(evaluate<Result>(*t, visitor)) : std::nullopt;
+    return t ? std::make_optional(eval(*t)) : std::nullopt;
   } else if constexpr (details::is_pointer_v<T>) {
     // Special case pointers to not act like maybe types in evaluate() (aka assume not null)
     // Recursive structs that you would want to evaluate require indirection to implement
@@ -692,7 +600,7 @@ details::evaluate_result_t<Result, Visitor, T> evaluate(const T& t, Visitor visi
     result_vec.reserve(std::distance(std::begin(t), std::end(t)));
 
     for (const auto& val : t) {
-      result_vec.push_back(evaluate<Result>(val, visitor));
+      result_vec.push_back(eval(val));
     }
 
     return result_vec;
@@ -714,56 +622,6 @@ struct Hash {
     return knot::hash_value(t);
   }
 };
-
-#define KNOT_COMPAREABLE(U)                                                              \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator==(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) == as_tie(rhs);                                                 \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator!=(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) != as_tie(rhs);                                                 \
-  }
-
-#define KNOT_ORDERED(U)                                                                  \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator==(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) == as_tie(rhs);                                                 \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator!=(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) != as_tie(rhs);                                                 \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator<(const T& rhs) const {                                                   \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) < as_tie(rhs);                                                  \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator<=(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) <= as_tie(rhs);                                                 \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator>(const T& rhs) const {                                                   \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) > as_tie(rhs);                                                  \
-  }                                                                                      \
-                                                                                         \
-  template <typename T, typename = std::enable_if_t<std::is_same_v<U, std::decay_t<T>>>> \
-  bool operator>=(const T& rhs) const {                                                  \
-    using knot::details::as_tie;                                                         \
-    return as_tie(*this) >= as_tie(rhs);                                                 \
-  }
 
 }  // namespace knot
 
