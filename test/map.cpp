@@ -2,6 +2,8 @@
 
 #include "knot.h"
 
+#include <memory>
+#include <optional>
 #include <vector>
 #include <map>
 
@@ -45,4 +47,30 @@ TEST(Map, range) {
 
   const auto map1 = knot::map<std::map<int, int>>(expected_p1);
   EXPECT_EQ(expected_map, map1);
+}
+
+TEST(Map, maybe) {
+  const std::optional<P1> expected_opt{P1{1, 3}};
+  const std::unique_ptr<P2> expected_ptr{new P2{1, 3}};
+
+  const auto ptr = knot::map<std::unique_ptr<P2>>(expected_opt);
+  EXPECT_EQ(*expected_ptr, *ptr);
+
+  const auto opt = knot::map<std::optional<P1>>(expected_ptr);
+  EXPECT_EQ(expected_opt, opt);
+
+  const auto ptr2 = knot::map<std::unique_ptr<P2>>(std::optional<P1>{});
+  EXPECT_EQ(nullptr, ptr2);
+
+  const auto opt2 = knot::map<std::optional<P1>>(std::unique_ptr<P2>{});
+  EXPECT_EQ(std::nullopt, opt2);
+}
+
+TEST(Map, override) {
+  const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}), 
+    [](const std::string& str) {
+      return str.size();
+    });
+  const P2 expected_p2{1, 3};
+  EXPECT_EQ(expected_p2, p2);
 }

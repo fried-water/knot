@@ -248,11 +248,11 @@ void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
   ((visit(std::get<Is>(tuple), visitor)), ...);
 }
 
-template <typename Result, typename T, std::size_t... Is>
-Result map_tuple(const T& t, std::index_sequence<Is...>) {
+template <typename Result, typename T, typename F, std::size_t... Is>
+Result map_tuple(const T& t, F f, std::index_sequence<Is...>) {
   using ResultTuple = std::decay_t<decltype(as_tie(std::declval<Result>()))>;
   auto tuple = as_tie(t);
-  return Result{map<std::decay_t<std::tuple_element_t<Is, ResultTuple>>>(std::get<Is>(tuple))...};
+  return Result{map<std::decay_t<std::tuple_element_t<Is, ResultTuple>>>(std::get<Is>(tuple), f)...};
 }
 
 template <typename T, typename = void>
@@ -588,6 +588,9 @@ Result map(const T& t, F f) {
     && details::is_maybe_type_v<Result> == details::is_maybe_type_v<T>
     && details::is_range_v<Result> == details::is_range_v<T>));
 
+  // Not mapping to raw pointers
+  static_assert(!std::is_pointer_v<Result>);
+
   // Visitors cannot take object by non-const lvalue
   if constexpr (details::can_visit_v<F, T>) {
     return static_cast<Result>(f(t));
@@ -599,14 +602,17 @@ Result map(const T& t, F f) {
 
     static_assert(SrcSize == DstSize);
 
-    return details::map_tuple<Result>(t, std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result>(t, f, std::make_index_sequence<SrcSize>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit([](const auto& val){
       return Result{val};
     }, t);
-  } else if constexpr (details::is_maybe_type_v<Result>) { // TODO
-    static_assert(!details::is_maybe_type_v<Result>);
+  } else if constexpr (details::is_pointer_v<Result>) {
+    using ElementT = typename Result::element_type;
+    return t? Result{new ElementT{map<ElementT>(*t, f)}} : nullptr;
+  } else if constexpr (details::is_optional_v<Result>) {
+    return t? Result{map<typename Result::value_type>(*t, f)} : std::nullopt;
   } else if constexpr (details::is_range_v<Result>) {
     Result range{};
     if constexpr (details::is_reserveable_v<Result>) range.reserve(std::distance(std::begin(t), std::end(t)));
@@ -617,9 +623,9 @@ Result map(const T& t, F f) {
     // TODO bound check result arrays
     for(const auto& val : t) {
       if constexpr (details::is_array_v<Result>) {
-        range[i++] = map<DstType>(val);
+        range[i++] = map<DstType>(val, f);
       } else {
-        range.insert(range.end(), map<DstType>(val));
+        range.insert(range.end(), map<DstType>(val, f));
       }
     }
 
