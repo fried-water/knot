@@ -52,9 +52,8 @@ void visit(const T&, F);
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc = {});
 
-// Map must be a copy for now unless objects supply a non-const tie
 template <typename Result, typename T, typename F = std::tuple<>>
-Result map(const T&, F f = {});
+Result map(T&&, F f = {});
 
 enum class SearchResult {
   Explore,  // Continue exploring children
@@ -129,6 +128,16 @@ using as_tuple_type_t = typename as_tuple_type<T>::type;
 template <typename... Ts>
 const auto& as_tuple(const std::tuple<Ts...>& tuple) {
   return tuple;
+}
+
+template <typename... Ts>
+std::tuple<Ts...>&& as_tuple(std::tuple<Ts...>&& tuple) {
+  return std::move(tuple);
+}
+
+template <typename First, typename Second>
+std::tuple<First, Second> as_tuple(std::pair<First, Second>&& pair) {
+  return {std::move(pair.first), std::move(pair.second)};
 }
 
 template <typename T>
@@ -249,10 +258,9 @@ void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
 }
 
 template <typename Result, typename T, typename F, std::size_t... Is>
-Result map_tuple(const T& t, F f, std::index_sequence<Is...>) {
-  using ResultTuple = std::decay_t<decltype(as_tie(std::declval<Result>()))>;
-  auto tuple = as_tie(t);
-  return Result{map<std::decay_t<std::tuple_element_t<Is, ResultTuple>>>(std::get<Is>(tuple), f)...};
+Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
+  auto tuple = as_tuple(std::forward<T>(t));
+  return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)), f)...};
 }
 
 template <typename T, typename = void>
@@ -579,40 +587,47 @@ Result accumulate(const T& t, F f, Result acc) {
 }
 
 template <typename Result, typename T, typename F>
-Result map(const T& t, F f) {
+Result map(T&& t, F f) {
+  using DecayedT = std::decay_t<T>;
   // Either these is an override or type category needs to align
   static_assert(details::can_visit_v<F, T> || (
-    details::is_primitive_type_v<Result> == details::is_primitive_type_v<T>
-    && details::is_product_type_v<Result> == details::is_product_type_v<T>
-    && details::is_variant_v<Result> == details::is_variant_v<T>
-    && details::is_maybe_type_v<Result> == details::is_maybe_type_v<T>
-    && details::is_range_v<Result> == details::is_range_v<T>));
+    details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
+    && details::is_product_type_v<Result> == details::is_product_type_v<DecayedT>
+    && details::is_variant_v<Result> == details::is_variant_v<DecayedT>
+    && details::is_maybe_type_v<Result> == details::is_maybe_type_v<DecayedT>
+    && details::is_range_v<Result> == details::is_range_v<DecayedT>));
 
   // Not mapping to raw pointers
   static_assert(!std::is_pointer_v<Result>);
 
   // Visitors cannot take object by non-const lvalue
-  if constexpr (details::can_visit_v<F, T>) {
-    return static_cast<Result>(f(t));
+  if constexpr (details::can_visit_v<F, DecayedT&&>) {
+    return static_cast<Result>(f(std::forward<T>(t)));
+  } else if constexpr (std::is_same_v<Result, DecayedT>) {
+    return std::forward<T>(t);
   } else if constexpr (details::is_primitive_type_v<Result>) {
-    return static_cast<Result>(t);
+    return static_cast<Result>(std::forward<T>(t));
   } else if constexpr (details::is_product_type_v<Result>) {
-    constexpr std::size_t SrcSize = std::tuple_size_v<std::decay_t<decltype(details::as_tuple(std::declval<Result>()))>>;
-    constexpr std::size_t DstSize = std::tuple_size_v<std::decay_t<decltype(details::as_tuple(std::declval<T>()))>>;
+    constexpr std::size_t SrcSize = std::tuple_size_v<details::as_tuple_type_t<Result>>;
+    constexpr std::size_t DstSize = std::tuple_size_v<details::as_tuple_type_t<DecayedT>>;
 
     static_assert(SrcSize == DstSize);
 
-    return details::map_tuple<Result>(t, f, std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
-    return std::visit([](const auto& val){
-      return Result{val};
-    }, t);
+    return std::visit([&](auto&& val) {
+      if constexpr (details::can_visit_v<F, std::decay_t<decltype(val)>>) {
+        return Result{f(std::forward<decltype(val)>(val))};
+      } else {
+        return Result{std::forward<decltype(val)>(val)};
+      }
+    }, std::forward<T>(t));
   } else if constexpr (details::is_pointer_v<Result>) {
     using ElementT = typename Result::element_type;
-    return t? Result{new ElementT{map<ElementT>(*t, f)}} : nullptr;
+    return t? Result{new ElementT{map<ElementT>(*std::forward<T>(t), f)}} : nullptr;
   } else if constexpr (details::is_optional_v<Result>) {
-    return t? Result{map<typename Result::value_type>(*t, f)} : std::nullopt;
+    return t? Result{map<typename Result::value_type>(*std::forward<T>(t), f)} : std::nullopt;
   } else if constexpr (details::is_range_v<Result>) {
     Result range{};
     if constexpr (details::is_reserveable_v<Result>) range.reserve(std::distance(std::begin(t), std::end(t)));
@@ -621,11 +636,21 @@ Result map(const T& t, F f) {
 
     int i = 0;
     // TODO bound check result arrays
-    for(const auto& val : t) {
-      if constexpr (details::is_array_v<Result>) {
-        range[i++] = map<DstType>(val, f);
-      } else {
-        range.insert(range.end(), map<DstType>(val, f));
+    if constexpr (std::is_reference_v<T>) {
+      for(const auto& val : t) {
+        if constexpr (details::is_array_v<Result>) {
+          range[i++] = map<DstType>(val, f);
+        } else {
+          range.insert(range.end(), map<DstType>(val, f));
+        }
+      }
+    } else {
+      for(auto&& val : t) {
+        if constexpr (details::is_array_v<Result>) {
+          range[i++] = map<DstType>(std::move(val), f);
+        } else {
+          range.insert(range.end(), map<DstType>(std::move(val), f));
+        }
       }
     }
 

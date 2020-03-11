@@ -66,6 +66,16 @@ TEST(Map, maybe) {
   EXPECT_EQ(std::nullopt, opt2);
 }
 
+TEST(Map, variant) {
+  const auto var = knot::map<std::variant<int, char>>(std::variant<int>{1});
+  const auto expected = std::variant<int, char>{1}; 
+  EXPECT_EQ(expected, var);
+
+  const auto var_override = knot::map<std::variant<int, std::size_t>>(std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
+  const auto expected_override = std::variant<int, std::size_t>{3ul}; 
+  EXPECT_EQ(expected_override, var_override);
+}
+
 TEST(Map, override) {
   const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}), 
     [](const std::string& str) {
@@ -74,3 +84,34 @@ TEST(Map, override) {
   const P2 expected_p2{1, 3};
   EXPECT_EQ(expected_p2, p2);
 }
+
+struct MoveOnly {
+  MoveOnly(const MoveOnly&) = delete;
+  MoveOnly(MoveOnly&&) = default;
+};
+
+TEST(Map, move_only) {
+  // identity
+  knot::map<MoveOnly>(MoveOnly{});
+
+  // override
+  knot::map<MoveOnly>(MoveOnly{}, [](MoveOnly m) { return m; });
+
+  // product
+  knot::map<std::tuple<MoveOnly, MoveOnly>>(std::make_pair(MoveOnly{}, MoveOnly{}));
+  knot::map<std::pair<MoveOnly, MoveOnly>>(std::make_tuple(MoveOnly{}, MoveOnly{}));
+  // structs would require a 'moved from' as_tie()
+
+  // range
+  knot::map<std::map<int, MoveOnly>>(std::vector<std::pair<int, MoveOnly>>{});
+
+  // maybe
+  knot::map<std::unique_ptr<std::pair<MoveOnly, MoveOnly>>>(std::optional<std::pair<MoveOnly, MoveOnly>>{});
+
+  // variant
+  knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}});
+
+  // variant override
+  knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}}, [](MoveOnly m) { return m; });
+}
+
