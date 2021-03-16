@@ -263,16 +263,6 @@ Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
   return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)), f)...};
 }
 
-template <typename T, typename = void>
-struct can_visit : std::false_type {};
-
-template <typename Visitor, typename... Args>
-struct can_visit<std::tuple<Visitor, Args...>, std::void_t<decltype(std::declval<Visitor>()(std::declval<Args>()...))>>
-    : std::true_type {};
-
-template <typename Visitor, typename... Args>
-inline constexpr bool can_visit_v = can_visit<std::tuple<Visitor, Args...>>::value;
-
 template <typename Result, typename Visitor, typename T, typename = void>
 struct evaluate_result {
   using type = Result;
@@ -282,44 +272,44 @@ template <typename Result, typename Visitor, typename T>
 using evaluate_result_t = typename evaluate_result<Result, Visitor, T>::type;
 
 template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<can_visit_v<Visitor, T>>> {
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<std::is_invocable_v<Visitor, T>>> {
   using type = std::decay_t<decltype(std::declval<Visitor>()(std::declval<T>()))>;
 };
 
 template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, std::optional<T>, std::enable_if_t<!can_visit_v<Visitor, std::optional<T>>>> {
+struct evaluate_result<Result, Visitor, std::optional<T>, std::enable_if_t<!std::is_invocable_v<Visitor, std::optional<T>>>> {
   using type = std::optional<evaluate_result_t<Result, Visitor, T>>;
 };
 
 template <typename Result, typename Visitor, typename T1, typename T2>
-struct evaluate_result<Result, Visitor, std::pair<T1, T2>, std::enable_if_t<!can_visit_v<Visitor, std::pair<T1, T2>>>> {
+struct evaluate_result<Result, Visitor, std::pair<T1, T2>, std::enable_if_t<!std::is_invocable_v<Visitor, std::pair<T1, T2>>>> {
   using type = std::tuple<evaluate_result_t<Result, Visitor, T1>, evaluate_result_t<Result, Visitor, T2>>;
 };
 
 template <typename Result, typename Visitor, typename... Ts>
-struct evaluate_result<Result, Visitor, std::tuple<Ts...>, std::enable_if_t<!can_visit_v<Visitor, std::tuple<Ts...>>>> {
+struct evaluate_result<Result, Visitor, std::tuple<Ts...>, std::enable_if_t<!std::is_invocable_v<Visitor, std::tuple<Ts...>>>> {
   using type = std::tuple<evaluate_result_t<Result, Visitor, Ts>...>;
 };
 
 template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_pointer_v<T> && !can_visit_v<Visitor, T>>> {
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_pointer_v<T> && !std::is_invocable_v<Visitor, T>>> {
   using type = evaluate_result_t<Result, Visitor, std::decay_t<decltype(*std::declval<T>())>>;
 };
 
 template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_range_v<T> && !can_visit_v<Visitor, T>>> {
+struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_range_v<T> && !std::is_invocable_v<Visitor, T>>> {
   using type = std::vector<evaluate_result_t<Result, Visitor, typename T::value_type>>;
 };
 
 template <typename Result, typename Visitor, typename... Ts>
 struct evaluate_result<Result, Visitor, std::variant<Ts...>,
-                       std::enable_if_t<!can_visit_v<Visitor, std::variant<Ts...>>>> {
+                       std::enable_if_t<!std::is_invocable_v<Visitor, std::variant<Ts...>>>> {
   using type = std::common_type_t<evaluate_result_t<Result, Visitor, Ts>...>;
 };
 
 template <typename Result, typename T, typename Visitor, typename... Ts, std::size_t... Is>
 auto evaluate_expand_tuple(const T& t, Visitor visitor, std::tuple<Ts...>&& tuple, std::index_sequence<Is...>) {
-  if constexpr (can_visit_v<Visitor, T, Ts...>) {
+  if constexpr (std::is_invocable_v<Visitor, T, Ts...>) {
     return visitor(t, std::get<Is>(std::move(tuple))...);
   } else {
     return std::move(tuple);
@@ -350,7 +340,7 @@ std::pair<bool, int> dfs_tuple(const T& tuple, F f, int id, int parent, std::ind
 
 template <typename T, typename F>
 std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent) {
-  if constexpr (can_visit_v<F, T, int, int>) {
+  if constexpr (std::is_invocable_r_v<SearchResult, F, T, int, int>) {
     SearchResult result = f(t, id++, parent);
 
     if (result == SearchResult::Finish)
@@ -554,13 +544,11 @@ std::size_t hash_value(const Outer& t) {
 
 template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
-  if constexpr (details::can_visit_v<Visitor, T>) {
-    // visit the value, if the function returns a value, stop recursing on false
-    if constexpr (std::is_same_v<void, decltype(visitor(t))>) {
-      visitor(t);
-    } else {
-      if (!visitor(t)) return;
-    }
+  // visit the value, if the function returns a bool, stop recursing on false
+  if constexpr (std::is_invocable_r_v<bool, Visitor, T>) {
+    if (!visitor(t)) return;
+  } else if constexpr (std::is_invocable_v<Visitor, T>) {
+    visitor(t);
   }
 
   // Call visit recursively depending on type
@@ -579,7 +567,7 @@ void visit(const T& t, Visitor visitor) {
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc) {
   visit(t, [&](const auto& value) {
-    if constexpr (details::can_visit_v<F, Result, decltype(value)>) {
+    if constexpr (std::is_invocable_r_v<Result, F, Result, decltype(value)>) {
       acc = f(std::move(acc), value);
     }
   });
@@ -590,7 +578,7 @@ template <typename Result, typename T, typename F>
 Result map(T&& t, F f) {
   using DecayedT = std::decay_t<T>;
   // Either these is an override or type category needs to align
-  static_assert(details::can_visit_v<F, T> || (
+  static_assert(std::is_invocable_v<F, T> || (
     details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
     && details::is_product_type_v<Result> == details::is_product_type_v<DecayedT>
     && details::is_variant_v<Result> == details::is_variant_v<DecayedT>
@@ -601,7 +589,7 @@ Result map(T&& t, F f) {
   static_assert(!std::is_pointer_v<Result>);
 
   // Visitors cannot take object by non-const lvalue
-  if constexpr (details::can_visit_v<F, DecayedT&&>) {
+  if constexpr (std::is_invocable_v<F, DecayedT&&>) {
     return static_cast<Result>(f(std::forward<T>(t)));
   } else if constexpr (std::is_same_v<Result, DecayedT>) {
     return std::forward<T>(t);
@@ -617,7 +605,7 @@ Result map(T&& t, F f) {
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit([&](auto&& val) {
-      if constexpr (details::can_visit_v<F, std::decay_t<decltype(val)>>) {
+      if constexpr (std::is_invocable_v<F, std::decay_t<decltype(val)>>) {
         return Result{f(std::forward<decltype(val)>(val))};
       } else {
         return Result{std::forward<decltype(val)>(val)};
@@ -660,14 +648,14 @@ Result map(T&& t, F f) {
 
 template <typename Result, typename T, typename Visitor>
 details::evaluate_result_t<Result, Visitor, T> evaluate(const T& t, Visitor visitor) {
-  static_assert(details::is_knot_supported_type_v<T> || details::can_visit_v<Visitor, T>);
+  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<Visitor, T>);
 
   auto eval = [&visitor](const auto& t) { return evaluate<Result>(t, visitor); };
 
   // Allow visitor to override and prevent recursion for specific types (even knot unsupported types)
-  if constexpr (details::can_visit_v<Visitor, T>) {
+  if constexpr (std::is_invocable_v<Visitor, T>) {
     return visitor(t);
-  } else if constexpr (details::can_visit_v<Visitor, T, decltype(eval)>) {
+  } else if constexpr (std::is_invocable_v<Visitor, T, decltype(eval)>) {
     return visitor(t, eval);
   } else if constexpr (details::is_primitive_type_v<T>) {
     static_assert(std::is_same_v<T, Result>);
