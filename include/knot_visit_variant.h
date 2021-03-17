@@ -7,7 +7,7 @@ namespace knot {
 
 // Unfortunately std::visit isn't able to generate code as optimal as hand rolled switch statements
 template <typename... Ts, typename F>
-auto visit_variant(const std::variant<Ts...>& variant, F f) {
+decltype(auto) visit_variant(const std::variant<Ts...>& variant, F f) {
   if constexpr (sizeof...(Ts) == 1) {
     return f(*std::get_if<0>(&variant));
   } else if constexpr (sizeof...(Ts) == 2) {

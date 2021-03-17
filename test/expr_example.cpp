@@ -73,7 +73,7 @@ TEST(Expr, test) {
   std::cout << "Hash: " << knot::hash_value(expr) << '\n';
   std::cout << knot::debug_string(expr) << '\n';
 
-  const std::vector<uint8_t> bytes = knot::serialize(expr);
+  const std::vector<std::byte> bytes = knot::serialize(expr);
   const std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
 
   EXPECT_TRUE(deserialized.has_value());

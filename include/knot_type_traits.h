@@ -13,6 +13,7 @@ namespace details {
 
 template <typename>
 inline constexpr bool is_array_v = false;
+
 template <typename T, std::size_t N>
 inline constexpr bool is_array_v<std::array<T, N>> = true;
 
@@ -54,6 +55,14 @@ struct is_reserveable<T, std::void_t<decltype(std::declval<T>().reserve(0))>> : 
 template <typename T>
 inline constexpr bool is_reserveable_v = is_reserveable<T>::value;
 
+
+template <typename T, typename Enable = void>
+struct output_it_value { using type = uint8_t; };
+template <typename T>
+struct output_it_value<T, std::void_t<decltype(*std::declval<T>() = std::byte{})>> { using type = std::byte; };
+template <typename T>
+using output_it_value_t = typename output_it_value<T>::type;
+
 template <typename, typename = void>
 struct is_std_hashable : std::false_type {};
 template <typename T>
@@ -61,8 +70,10 @@ struct is_std_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>())
 template <typename T>
 inline constexpr bool is_std_hashable_v = is_std_hashable<T>::value;
 
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundefined-internal"
+#endif
 
 struct filler {
   // Exception for std::optional<T> is needed because optional has a constructor
@@ -71,7 +82,9 @@ struct filler {
   operator T();
 };
 
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 template <typename T, typename Seq = std::index_sequence<>, typename = void>
 struct aggregate_arity : Seq {};

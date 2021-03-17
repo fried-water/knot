@@ -12,6 +12,8 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <numeric>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -23,7 +25,7 @@
 namespace knot {
 
 template <typename T>
-std::vector<uint8_t> serialize(const T&);
+std::vector<std::byte> serialize(const T&);
 
 template <typename T, typename IT>
 IT serialize(const T&, IT out);
@@ -145,16 +147,6 @@ auto as_tuple(const T& tieable) {
   return as_tie(tieable);
 }
 
-template <typename T, typename Tuple, std::size_t... Is>
-T from_tuple_helper(Tuple&& t, std::index_sequence<Is...>) {
-  return T{std::get<Is>(std::forward<Tuple>(t))...};
-}
-
-template <typename Result, typename... Ts>
-Result from_tuple(std::tuple<Ts...>&& t) {
-  return from_tuple_helper<Result>(std::move(t), std::make_index_sequence<sizeof...(Ts)>{});
-}
-
 // Generic maybe type utilities (optional, pointers)
 
 template <typename T>
@@ -216,6 +208,7 @@ struct tuple_rest<std::tuple<T, Rest...>> {
 template <typename T, typename IT>
 std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end) {
   if constexpr (std::tuple_size_v<T> == 0) {
+    static_cast<void>(end); // To suppress warnings about not touching end on this branch
     return std::make_pair(std::make_tuple(), begin);
   } else {
     using first_element = std::remove_const_t<std::tuple_element_t<0, T>>;
@@ -261,6 +254,18 @@ template <typename Result, typename T, typename F, std::size_t... Is>
 Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
   auto tuple = as_tuple(std::forward<T>(t));
   return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)), f)...};
+}
+
+template <typename Result, typename T, std::size_t... Is>
+Result make_from_tuple(T&& t, std::index_sequence<Is...>) {
+  return Result{std::get<Is>(std::forward<T>(t))...};
+}
+
+template <typename Result, typename T, typename F, std::size_t... Is>
+Result accumulate_tuple(T&& t, F f, std::index_sequence<Is...>) {
+  auto tuple = as_tuple(std::forward<T>(t));
+  std::array<Result, sizeof...(Is)> arr{f(std::get<Is>(std::move(tuple)))...};
+  return std::accumulate(arr.begin(), arr.end(), Result{});
 }
 
 template <typename Result, typename Visitor, typename T, typename = void>
@@ -372,8 +377,8 @@ std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent) {
 }  // namespace details
 
 template <typename T>
-std::vector<uint8_t> serialize(const T& t) {
-  std::vector<uint8_t> buf;
+std::vector<std::byte> serialize(const T& t) {
+  std::vector<std::byte> buf;
   serialize(t, std::back_inserter(buf));
   return buf;
 }
@@ -381,9 +386,10 @@ std::vector<uint8_t> serialize(const T& t) {
 template <typename Outer, typename IT>
 IT serialize(const Outer& t, IT out) {
   auto serialize_primitive = [](auto value, auto it) {
-    std::array<uint8_t, sizeof(value)> array{};
+    std::array<std::byte, sizeof(value)> array{};
     std::memcpy(&array, &value, sizeof(value));
-    return std::copy(array.begin(), array.end(), it);
+    return std::transform(array.begin(), array.end(), it,
+      [](std::byte b) { return static_cast<details::output_it_value_t<IT>>(b); });
   };
 
   return accumulate(t,
@@ -396,7 +402,7 @@ IT serialize(const Outer& t, IT out) {
                       } else if constexpr (details::is_maybe_type_v<T>) {
                         return serialize_primitive(static_cast<bool>(value), out);
                       } else if constexpr (details::is_range_v<T>) {
-                        return serialize_primitive(value.size(), out);
+                        return serialize_primitive(std::distance(value.begin(), value.end()), out);
                       } else {
                         return out;
                       }
@@ -419,14 +425,16 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
 
   static_assert(!std::is_reference_v<Outer>);
   static_assert(!std::is_pointer_v<T>);
-  static_assert(std::is_same_v<typename IT::value_type, uint8_t>);
+  static_assert(std::is_same_v<typename IT::value_type, uint8_t>
+    || std::is_same_v<typename IT::value_type, int8_t>
+    || std::is_same_v<typename IT::value_type, std::byte>);
   static_assert(details::is_knot_supported_type_v<T>);
 
   if constexpr (details::is_primitive_type_v<T>) {
     if (std::distance(begin, end) < sizeof(T)) return std::nullopt;
 
-    std::array<uint8_t, sizeof(T)> array;
-    std::copy(begin, begin + sizeof(T), array.begin());
+    std::array<std::byte, sizeof(T)> array;
+    std::transform(begin, begin + sizeof(T), array.begin(), [](auto b) { return std::byte{static_cast<uint8_t>(b)}; });
 
     T t;
     std::memcpy(&t, &array, sizeof(T));
@@ -473,7 +481,9 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
         });
   } else if constexpr (details::is_product_type_v<T>) {
     return details::make_monad(details::tuple_deserialize<details::as_tuple_type_t<T>>(begin, end))
-        .map([](auto&& tuple, IT begin) { return std::make_pair(details::from_tuple<T>(std::move(tuple)), begin); });
+        .map([](auto&& tuple, IT begin) { return 
+          std::make_pair(details::make_from_tuple<T>(std::move(tuple), std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>()), 
+            begin); });
   } else {
     return std::nullopt;
   }
@@ -540,6 +550,45 @@ std::size_t hash_value(const Outer& t) {
       return hash;
     }
   });
+}
+
+template <typename T>
+std::size_t area(const std::vector<T>& v);
+
+template <typename T>
+std::size_t area(const std::unique_ptr<T>& ptr);
+
+template <typename T>
+std::size_t area(const T& t) {
+  const auto area_visitor = [](const auto& t) { return area(t); };
+
+  if constexpr (std::is_trivially_destructible_v<T>) {
+    return 0;
+  } else if constexpr (details::is_array_v<T>) {
+    return std::accumulate(t.begin(), t.end(), static_cast<std::size_t>(0), 
+      [](std::size_t acc, const auto& t) { return acc + area(t); });
+  } else if constexpr (details::is_product_type_v<T>) {
+    constexpr std::size_t SrcSize = std::tuple_size_v<details::as_tuple_type_t<T>>;
+    return details::accumulate_tuple<std::size_t>(t, area_visitor, std::make_index_sequence<SrcSize>());
+  } else if constexpr (details::is_variant_v<T>) {
+    return visit_variant(t, area_visitor);
+  } else if constexpr (details::is_optional_v<T>) {
+    return t ? area(*t) : 0;
+  } else {
+    static_assert(!std::is_same_v<T, T>, "Unsupported type in area()");
+    return 0;
+  }
+}
+
+template <typename T>
+std::size_t area(const std::vector<T>& v) {
+  return std::accumulate(v.begin(), v.end(), v.capacity() * sizeof(T),
+    [](std::size_t acc, const auto& t) { return acc + area(t); });
+}
+
+template <typename T>
+std::size_t area(const std::unique_ptr<T>& ptr) {
+  return ptr ? (sizeof(T) + area(*ptr)) : 0;
 }
 
 template <typename T, typename Visitor>
