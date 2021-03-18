@@ -25,27 +25,11 @@ struct UnaryExpr {
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::accumulate(expr, [desired_op](int count, Op op) { return op == desired_op ? count + 1 : count; }, 0);
+  return knot::preorder_accumulate(expr, [desired_op](int count, Op op) { return op == desired_op ? count + 1 : count; }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
-  return knot::visit(expr, [](int leaf) { std::cout << "Leaf: " << leaf << '\n'; });
-}
-
-int eval(const Expr& expr) {
-  struct EvalVisitor {
-    int operator()(const BinaryExpr& expr) const {
-      const int lhs = knot::evaluate<int>(expr.lhs, EvalVisitor{});
-      const int rhs = knot::evaluate<int>(expr.rhs, EvalVisitor{});
-      return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
-    }
-
-    int operator()(const UnaryExpr& expr) const {
-      const int child = knot::evaluate<int>(expr.child, EvalVisitor{});
-      return expr.op == Op::Add ? child : -child;
-    }
-  };
-  return knot::evaluate<int>(expr, EvalVisitor{});
+  return knot::preorder(expr, [](int leaf) { std::cout << "Leaf: " << leaf << '\n'; });
 }
 
 Expr binary(Op op, Expr lhs, Expr rhs) {
@@ -71,14 +55,12 @@ TEST(Expr, test) {
 
   dump_leaf_values(expr);
   std::cout << "Hash: " << knot::hash_value(expr) << '\n';
-  std::cout << knot::debug_string(expr) << '\n';
+  std::cout << knot::debug(expr) << '\n';
 
   const std::vector<std::byte> bytes = knot::serialize(expr);
   const std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
 
   EXPECT_TRUE(deserialized.has_value());
   // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
-  EXPECT_EQ(knot::debug_string(expr), knot::debug_string(*deserialized));
+  EXPECT_EQ(knot::debug(expr), knot::debug(*deserialized));
 }
-
-TEST(Expr, eval) { EXPECT_EQ(-16, eval(make_big_expr())); }

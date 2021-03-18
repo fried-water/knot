@@ -8,11 +8,11 @@ using SomeType = std::variant<int, Point, Bbox, std::optional<Point>, std::vecto
 
 namespace {
 
-// gather all the objects I visit in the order visited
+// Gather all the objects in the order visited
 template <typename T>
 std::vector<SomeType> gather_objects(const T& t) {
   std::vector<SomeType> values;
-  knot::visit(t, [&](const auto& value) { values.emplace_back(value); });
+  knot::preorder(t, [&](const auto& value) { values.emplace_back(value); });
   return values;
 }
 

@@ -40,10 +40,10 @@ template <typename T, typename IT>
 std::optional<std::pair<std::remove_const_t<T>, IT>> deserialize_partial(IT begin, IT end);
 
 template <typename T>
-std::string debug_string(const T&);
+std::string debug(const T&);
 
 template <typename T>
-std::ostream& debug_string(std::ostream&, const T&);
+std::ostream& debug(std::ostream&, const T&);
 
 template <typename T>
 std::size_t hash_value(const T&);
@@ -54,19 +54,22 @@ void visit(const T&, F);
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc = {});
 
-template <typename Result, typename T, typename F = std::tuple<>>
-Result map(T&&, F f = {});
-
-enum class SearchResult {
-  Explore,  // Continue exploring children
-  Reject,   // Don't explore children
-  Finish    // End the search
-};
-
-// Returns true if SearchResult::Finish was returned
-// before exhausting the search space
 template <typename T, typename F>
-bool depth_first_search(const T&, F);
+void preorder(const T&, F);
+
+template <typename Result, typename T, typename F>
+Result preorder_accumulate(const T& t, F f, Result acc = {});
+
+template <typename T, typename F>
+void postorder(const T&, F);
+
+template <typename T>
+std::size_t size(const T& t) {
+  return accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
+}
+
+template <typename Result, typename T>
+Result map(T&&);
 
 namespace details {
 
@@ -98,9 +101,6 @@ template <typename T>
 inline constexpr bool is_knot_supported_type_v =
     is_product_type_v<T> || is_variant_v<T> || is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
 
-template <typename T, typename T2 = void>
-using tie_enable = std::enable_if_t<is_tieable_v<T>, T2>;
-
 // Generic product type utilities (tuple, pair, tieable structs)
 
 template <typename, typename = void>
@@ -115,12 +115,12 @@ template <typename T>
 struct tuple_from_tie;
 
 template <typename... Ts>
-struct tuple_from_tie<std::tuple<const Ts&...>> {
-  using type = typename std::tuple<Ts...>;
+struct tuple_from_tie<std::tuple<Ts&...>> {
+  using type = typename std::tuple<std::remove_const_t<Ts>...>;
 };
 
 template <typename T>
-struct as_tuple_type<T, tie_enable<T>> {
+struct as_tuple_type<T, std::enable_if_t<is_tieable_v<T>>> {
   using type = typename tuple_from_tie<decltype(as_tie(std::declval<T>()))>::type;
 };
 
@@ -235,143 +235,20 @@ std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, std:
   return index >= sizeof...(Is) ? std::nullopt : options[index](begin, end);
 }
 
-// Taken from boost::hash_combine
-inline std::size_t hash_combine(std::size_t seed, std::size_t hash) {
-  return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
-}
-
-template <typename T, std::size_t... Is>
-void tuple_debug_string(std::ostream& os, const T& tuple, std::index_sequence<Is...>) {
-  (debug_string(os << ", ", std::get<Is + 1>(tuple)), ...);
-}
-
 template <typename T, typename Visitor, std::size_t... Is>
 void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
   ((visit(std::get<Is>(tuple), visitor)), ...);
 }
 
-template <typename Result, typename T, typename F, std::size_t... Is>
-Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
+template <typename Result, typename T, std::size_t... Is>
+Result map_tuple(T&& t, std::index_sequence<Is...>) {
   auto tuple = as_tuple(std::forward<T>(t));
-  return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)), f)...};
+  return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)))...};
 }
 
 template <typename Result, typename T, std::size_t... Is>
 Result make_from_tuple(T&& t, std::index_sequence<Is...>) {
   return Result{std::get<Is>(std::forward<T>(t))...};
-}
-
-template <typename Result, typename T, typename F, std::size_t... Is>
-Result accumulate_tuple(T&& t, F f, std::index_sequence<Is...>) {
-  auto tuple = as_tuple(std::forward<T>(t));
-  std::array<Result, sizeof...(Is)> arr{f(std::get<Is>(std::move(tuple)))...};
-  return std::accumulate(arr.begin(), arr.end(), Result{});
-}
-
-template <typename Result, typename Visitor, typename T, typename = void>
-struct evaluate_result {
-  using type = Result;
-};
-
-template <typename Result, typename Visitor, typename T>
-using evaluate_result_t = typename evaluate_result<Result, Visitor, T>::type;
-
-template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<std::is_invocable_v<Visitor, T>>> {
-  using type = std::decay_t<decltype(std::declval<Visitor>()(std::declval<T>()))>;
-};
-
-template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, std::optional<T>, std::enable_if_t<!std::is_invocable_v<Visitor, std::optional<T>>>> {
-  using type = std::optional<evaluate_result_t<Result, Visitor, T>>;
-};
-
-template <typename Result, typename Visitor, typename T1, typename T2>
-struct evaluate_result<Result, Visitor, std::pair<T1, T2>, std::enable_if_t<!std::is_invocable_v<Visitor, std::pair<T1, T2>>>> {
-  using type = std::tuple<evaluate_result_t<Result, Visitor, T1>, evaluate_result_t<Result, Visitor, T2>>;
-};
-
-template <typename Result, typename Visitor, typename... Ts>
-struct evaluate_result<Result, Visitor, std::tuple<Ts...>, std::enable_if_t<!std::is_invocable_v<Visitor, std::tuple<Ts...>>>> {
-  using type = std::tuple<evaluate_result_t<Result, Visitor, Ts>...>;
-};
-
-template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_pointer_v<T> && !std::is_invocable_v<Visitor, T>>> {
-  using type = evaluate_result_t<Result, Visitor, std::decay_t<decltype(*std::declval<T>())>>;
-};
-
-template <typename Result, typename Visitor, typename T>
-struct evaluate_result<Result, Visitor, T, std::enable_if_t<is_range_v<T> && !std::is_invocable_v<Visitor, T>>> {
-  using type = std::vector<evaluate_result_t<Result, Visitor, typename T::value_type>>;
-};
-
-template <typename Result, typename Visitor, typename... Ts>
-struct evaluate_result<Result, Visitor, std::variant<Ts...>,
-                       std::enable_if_t<!std::is_invocable_v<Visitor, std::variant<Ts...>>>> {
-  using type = std::common_type_t<evaluate_result_t<Result, Visitor, Ts>...>;
-};
-
-template <typename Result, typename T, typename Visitor, typename... Ts, std::size_t... Is>
-auto evaluate_expand_tuple(const T& t, Visitor visitor, std::tuple<Ts...>&& tuple, std::index_sequence<Is...>) {
-  if constexpr (std::is_invocable_v<Visitor, T, Ts...>) {
-    return visitor(t, std::get<Is>(std::move(tuple))...);
-  } else {
-    return std::move(tuple);
-  }
-}
-
-template <typename Result, typename T, typename Visitor, typename Eval, std::size_t... Is>
-auto evaluate_tuple(const T& t, Visitor visitor, Eval eval, std::index_sequence<Is...>) {
-  const auto& tuple = as_tuple(t);
-  return evaluate_expand_tuple<Result>(t, visitor, std::make_tuple(eval(std::get<Is>(tuple))...),
-                                       std::make_index_sequence<sizeof...(Is)>());
-}
-
-template <typename T, typename F>
-std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent);
-
-template <typename T, typename F, std::size_t... Is>
-std::pair<bool, int> dfs_tuple(const T& tuple, F f, int id, int parent, std::index_sequence<Is...>) {
-  static constexpr std::array<std::pair<bool, int> (*)(const T&, F, int, int), sizeof...(Is)> funcs{
-      +[](const T& tuple, F f, int id, int parent) { return dfs_internal(std::get<Is>(tuple), f, id, parent); }...};
-  std::pair<bool, int> result{false, id};
-  for (int i = 0; i < sizeof...(Is); i++) {
-    result = funcs[i](tuple, f, result.second, parent);
-    if (result.first) return result;
-  }
-  return result;
-}
-
-template <typename T, typename F>
-std::pair<bool, int> dfs_internal(const T& t, F f, int id, int parent) {
-  if constexpr (std::is_invocable_r_v<SearchResult, F, T, int, int>) {
-    SearchResult result = f(t, id++, parent);
-
-    if (result == SearchResult::Finish)
-      return {true, id};
-    else if (result == SearchResult::Reject)
-      return {false, id};
-
-    parent = id - 1;
-  }
-
-  if constexpr (is_product_type_v<T>) {
-    return dfs_tuple(as_tuple(t), f, id, parent, std::make_index_sequence<std::tuple_size_v<as_tuple_type_t<T>>>());
-  } else if constexpr (is_variant_v<T>) {
-    return std::visit([&](const auto& val) { return dfs_internal(val, f, id, parent); }, t);
-  } else if constexpr (is_maybe_type_v<T>) {
-    return static_cast<bool>(t) ? dfs_internal(*t, f, id, parent) : std::pair<bool, int>{false, id};
-  } else if constexpr (is_range_v<T>) {
-    std::pair<bool, int> result{false, id};
-    for (const auto& val : t) {
-      result = dfs_internal(val, f, result.second, parent);
-      if (result.first) return result;
-    }
-    return result;
-  } else {
-    return {false, id};
-  }
 }
 
 }  // namespace details
@@ -490,62 +367,56 @@ std::optional<std::pair<std::remove_const_t<Outer>, IT>> deserialize_partial(IT 
 }
 
 template <typename T>
-std::string debug_string(const T& t) {
+std::string debug(const T& t) {
   std::ostringstream os;
-  debug_string(os, t);
+  debug(os, t);
   return std::move(os).str();
 }
 
 template <typename T>
-std::ostream& debug_string(std::ostream& os, const T& t) {
+std::ostream& debug(std::ostream& os, const T& t) {
   static_assert(details::is_knot_supported_type_v<T>);
 
   if constexpr (std::is_arithmetic_v<T>) {
-    return os << t;
+    os << t;
   } else if constexpr (std::is_enum_v<T>) {
-    return os << static_cast<std::underlying_type_t<T>>(t);
-  } else if constexpr (details::is_variant_v<T>) {
-    os << "<";
-    std::visit([&os](const auto& inner) { debug_string(os, inner); }, t);
-    return os << ">";
-  } else if constexpr (details::is_maybe_type_v<T>) {
-    return static_cast<bool>(t) ? debug_string(os, *t) : os << "none";
+    os << static_cast<std::underlying_type_t<T>>(t);
   } else if constexpr (std::is_same_v<T, std::string>) {
-    // Special case string
-    return os << "\"" << t << "\"";
-  } else if constexpr (details::is_range_v<T>) {
-    os << "[";
-    auto it = t.begin();
-    if (it != t.end()) {
-      debug_string(os, *it);
-      std::for_each(++it, t.end(), [&os](const auto& ele) { debug_string(os << ", ", ele); });
-    }
-    return os << "]";
-  } else if constexpr (details::is_product_type_v<T>) {
-    const auto& tuple = details::as_tuple(t);
-    os << "(";
-    if constexpr (std::tuple_size_v<details::as_tuple_type_t<T>>> 0) {
-      debug_string(os, std::get<0>(tuple));
-      details::tuple_debug_string(os, tuple,
-                                  std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>> - 1>());
-    }
-    return os << ")";
-  } else {
-    return os;
+    os << "\"" << t << "\""; // Special case string
+  } else if constexpr (details::is_maybe_type_v<T>) {
+    static_cast<bool>(t) ? debug(os, *t) : os << "none";
+  } else if constexpr (details::is_variant_v<T> || details::is_range_v<T> || details::is_product_type_v<T>) {
+
+    if constexpr(details::is_variant_v<T>) os << "<";
+    else if constexpr(details::is_product_type_v<T>) os << "(";
+    else os << "[" << std::distance(t.begin(), t.end()) << "; ";
+
+    visit(t, [&os](const auto& inner) { debug(os, inner); });
+
+    if constexpr(details::is_variant_v<T>) os << ">";
+    else if constexpr(details::is_product_type_v<T>) os << ")";
+    else os << "]";
   }
+
+  return os;
 }
 
 template <typename Outer>
 std::size_t hash_value(const Outer& t) {
   return accumulate<std::size_t>(t, [&](const std::size_t hash, const auto& value) {
+    // Taken from boost::hash_combine
+    const auto hash_combine = [](std::size_t seed, std::size_t hash) {
+      return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
+    };
+
     using T = std::decay_t<decltype(value)>;
     if constexpr (details::is_primitive_type_v<T> ||
                   (!details::is_knot_supported_type_v<T> && details::is_std_hashable_v<T>)) {
-      return details::hash_combine(hash, std::hash<T>{}(value));
+      return hash_combine(hash, std::hash<T>{}(value));
     } else if constexpr (details::is_variant_v<T>) {
-      return details::hash_combine(hash, value.index());
+      return hash_combine(hash, value.index());
     } else if constexpr (details::is_maybe_type_v<T>) {
-      return details::hash_combine(hash, static_cast<bool>(value));
+      return hash_combine(hash, static_cast<bool>(value));
     } else {
       return hash;
     }
@@ -568,8 +439,7 @@ std::size_t area(const T& t) {
     return std::accumulate(t.begin(), t.end(), static_cast<std::size_t>(0), 
       [](std::size_t acc, const auto& t) { return acc + area(t); });
   } else if constexpr (details::is_product_type_v<T>) {
-    constexpr std::size_t SrcSize = std::tuple_size_v<details::as_tuple_type_t<T>>;
-    return details::accumulate_tuple<std::size_t>(t, area_visitor, std::make_index_sequence<SrcSize>());
+    return accumulate<std::size_t>(t, [](std::size_t acc, const auto& ele) { return acc + area(ele); });
   } else if constexpr (details::is_variant_v<T>) {
     return visit_variant(t, area_visitor);
   } else if constexpr (details::is_optional_v<T>) {
@@ -593,23 +463,23 @@ std::size_t area(const std::unique_ptr<T>& ptr) {
 
 template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
-  // visit the value, if the function returns a bool, stop recursing on false
-  if constexpr (std::is_invocable_r_v<bool, Visitor, T>) {
-    if (!visitor(t)) return;
-  } else if constexpr (std::is_invocable_v<Visitor, T>) {
-    visitor(t);
-  }
+  const auto try_visit = [&](const auto & val) {
+    if constexpr (std::is_invocable_v<Visitor, T>) {
+      visitor(t);
+    }
+  };
 
-  // Call visit recursively depending on type
-  if constexpr (details::is_product_type_v<T>) {
-    details::visit_tuple(details::as_tuple(t), visitor,
-                         std::make_index_sequence<std::tuple_size_v<details::as_tuple_type_t<T>>>());
+  if constexpr (details::is_tieable_v<T>) {
+    using knot::details::as_tie;
+    details::visit_tuple(as_tie(t), try_visit, std::make_index_sequence<std::tuple_size_v<decltype(as_tie(t))>>());
+  } else if constexpr (details::is_tuple_v<T>) {
+    details::visit_tuple(t, try_visit, std::make_index_sequence<std::tuple_size_v<T>>());
   } else if constexpr (details::is_variant_v<T>) {
-    std::visit([&](const auto& val) { visit(val, visitor); }, t);
+    knot::visit_variant(t, try_visit);
   } else if constexpr (details::is_maybe_type_v<T>) {
-    if (static_cast<bool>(t)) visit(*t, visitor);
+    if (static_cast<bool>(t)) try_visit(*t);
   } else if constexpr (details::is_range_v<T>) {
-    for (const auto& val : t) visit(val, visitor);
+    for (const auto& val : t) try_visit(val);
   }
 }
 
@@ -623,48 +493,71 @@ Result accumulate(const T& t, F f, Result acc) {
   return acc;
 }
 
+template <typename T, typename Visitor>
+void preorder(const T& t, Visitor visitor) {
+  // visit the value, if the function returns a bool, stop recursing on false
+  if constexpr (std::is_invocable_r_v<bool, Visitor, T>) {
+    if (!visitor(t)) return;
+  } else if constexpr (std::is_invocable_v<Visitor, T>) {
+    visitor(t);
+  }
+
+  visit(t, [&](const auto& val) { preorder(val, visitor); });
+}
+
 template <typename Result, typename T, typename F>
-Result map(T&& t, F f) {
+Result preorder_accumulate(const T& t, F f, Result acc) {
+  preorder(t, [&](const auto& value) {
+    if constexpr (std::is_invocable_r_v<Result, F, Result, decltype(value)>) {
+      acc = f(std::move(acc), value);
+    }
+  });
+  return acc;
+}
+
+template <typename T, typename Visitor>
+void postorder(const T& t, Visitor visitor) {
+  visit(t, [&](const auto& val) { postorder(val, visitor); });
+
+  if constexpr (std::is_invocable_v<Visitor, T>) {
+    visitor(t);
+  }
+}
+
+template <typename Result, typename T>
+Result map(T&& t) {
   using DecayedT = std::decay_t<T>;
-  // Either these is an override or type category needs to align
-  static_assert(std::is_invocable_v<F, T> || (
-    details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
+  // Type category needs to align
+  static_assert(details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
     && details::is_product_type_v<Result> == details::is_product_type_v<DecayedT>
     && details::is_variant_v<Result> == details::is_variant_v<DecayedT>
     && details::is_maybe_type_v<Result> == details::is_maybe_type_v<DecayedT>
-    && details::is_range_v<Result> == details::is_range_v<DecayedT>));
+    && details::is_range_v<Result> == details::is_range_v<DecayedT>);
 
   // Not mapping to raw pointers
   static_assert(!std::is_pointer_v<Result>);
 
-  // Visitors cannot take object by non-const lvalue
-  if constexpr (std::is_invocable_v<F, DecayedT&&>) {
-    return static_cast<Result>(f(std::forward<T>(t)));
-  } else if constexpr (std::is_same_v<Result, DecayedT>) {
+  if constexpr (std::is_same_v<Result, DecayedT>) {
     return std::forward<T>(t);
   } else if constexpr (details::is_primitive_type_v<Result>) {
-    return static_cast<Result>(std::forward<T>(t));
+    return static_cast<Result>(t);
   } else if constexpr (details::is_product_type_v<Result>) {
     constexpr std::size_t SrcSize = std::tuple_size_v<details::as_tuple_type_t<Result>>;
     constexpr std::size_t DstSize = std::tuple_size_v<details::as_tuple_type_t<DecayedT>>;
 
     static_assert(SrcSize == DstSize);
 
-    return details::map_tuple<Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result>(std::forward<T>(t), std::make_index_sequence<SrcSize>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit([&](auto&& val) {
-      if constexpr (std::is_invocable_v<F, std::decay_t<decltype(val)>>) {
-        return Result{f(std::forward<decltype(val)>(val))};
-      } else {
         return Result{std::forward<decltype(val)>(val)};
-      }
     }, std::forward<T>(t));
   } else if constexpr (details::is_pointer_v<Result>) {
     using ElementT = typename Result::element_type;
-    return t? Result{new ElementT{map<ElementT>(*std::forward<T>(t), f)}} : nullptr;
+    return t? Result{new ElementT{map<ElementT>(*std::forward<T>(t))}} : nullptr;
   } else if constexpr (details::is_optional_v<Result>) {
-    return t? Result{map<typename Result::value_type>(*std::forward<T>(t), f)} : std::nullopt;
+    return t? Result{map<typename Result::value_type>(*std::forward<T>(t))} : std::nullopt;
   } else if constexpr (details::is_range_v<Result>) {
     Result range{};
     if constexpr (details::is_reserveable_v<Result>) range.reserve(std::distance(std::begin(t), std::end(t)));
@@ -676,17 +569,17 @@ Result map(T&& t, F f) {
     if constexpr (std::is_reference_v<T>) {
       for(const auto& val : t) {
         if constexpr (details::is_array_v<Result>) {
-          range[i++] = map<DstType>(val, f);
+          range[i++] = map<DstType>(val);
         } else {
-          range.insert(range.end(), map<DstType>(val, f));
+          range.insert(range.end(), map<DstType>(val));
         }
       }
     } else {
       for(auto&& val : t) {
         if constexpr (details::is_array_v<Result>) {
-          range[i++] = map<DstType>(std::move(val), f);
+          range[i++] = map<DstType>(std::move(val));
         } else {
-          range.insert(range.end(), map<DstType>(std::move(val), f));
+          range.insert(range.end(), map<DstType>(std::move(val)));
         }
       }
     }
@@ -695,58 +588,10 @@ Result map(T&& t, F f) {
   }
 }
 
-template <typename Result, typename T, typename Visitor>
-details::evaluate_result_t<Result, Visitor, T> evaluate(const T& t, Visitor visitor) {
-  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<Visitor, T>);
-
-  auto eval = [&visitor](const auto& t) { return evaluate<Result>(t, visitor); };
-
-  // Allow visitor to override and prevent recursion for specific types (even knot unsupported types)
-  if constexpr (std::is_invocable_v<Visitor, T>) {
-    return visitor(t);
-  } else if constexpr (std::is_invocable_v<Visitor, T, decltype(eval)>) {
-    return visitor(t, eval);
-  } else if constexpr (details::is_primitive_type_v<T>) {
-    static_assert(std::is_same_v<T, Result>);
-    return t;
-  } else if constexpr (details::is_product_type_v<T>) {
-    return details::evaluate_tuple<Result>(
-        t, visitor, eval, std::make_index_sequence<std::tuple_size_v<std::decay_t<decltype(details::as_tuple(t))>>>{});
-  } else if constexpr (details::is_variant_v<T>) {
-    return visit_variant(t,
-                         [&](const auto& val) -> details::evaluate_result_t<Result, Visitor, T> { return eval(val); });
-  } else if constexpr (details::is_optional_v<T>) {
-    return t ? std::make_optional(eval(*t)) : std::nullopt;
-  } else if constexpr (details::is_pointer_v<T>) {
-    // Special case pointers to not act like maybe types in evaluate() (aka assume not null)
-    // Recursive structs that you would want to evaluate require indirection to implement
-    // having every pointer require a null check would be less performant and less
-    // ergonomic since you would have to take an optional<Result> everytime
-    return evaluate<Result>(*t, visitor);
-  } else if constexpr (details::is_range_v<T>) {
-    details::evaluate_result_t<Result, Visitor, T> result_vec;
-    result_vec.reserve(std::distance(std::begin(t), std::end(t)));
-
-    for (const auto& val : t) {
-      result_vec.push_back(eval(val));
-    }
-
-    return result_vec;
-
-  } else {
-    return details::evaluate_result_t<Result, Visitor, T>{};
-  }
-}
-
-template <typename T, typename F>
-bool depth_first_search(const T& t, F f) {
-  return details::dfs_internal(t, f, 0, -1).first;
-}
-
 // std::hash<T> replacement for tieable types
 struct Hash {
   template <typename T>
-  std::size_t operator()(const T& t) const {
+  std::size_t operator()(const T& t) const noexcept {
     return knot::hash_value(t);
   }
 };
