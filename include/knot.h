@@ -68,8 +68,11 @@ std::size_t size(const T& t) {
   return accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
 }
 
-template <typename Result, typename T>
-Result map(T&&);
+template <typename T>
+std::size_t area(const T&);
+
+template <typename Result, typename T, typename F = std::tuple<>>
+Result map(T&&, F = {});
 
 namespace details {
 
@@ -237,13 +240,13 @@ std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, std:
 
 template <typename T, typename Visitor, std::size_t... Is>
 void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
-  ((visit(std::get<Is>(tuple), visitor)), ...);
+  ((visitor(std::get<Is>(tuple))), ...);
 }
 
-template <typename Result, typename T, std::size_t... Is>
-Result map_tuple(T&& t, std::index_sequence<Is...>) {
+template <typename Result, typename F, typename T, std::size_t... Is>
+Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
   auto tuple = as_tuple(std::forward<T>(t));
-  return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)))...};
+  return Result{map<std::tuple_element_t<Is, as_tuple_type_t<Result>>>(std::get<Is>(std::move(tuple)), f)...};
 }
 
 template <typename Result, typename T, std::size_t... Is>
@@ -269,7 +272,7 @@ IT serialize(const Outer& t, IT out) {
       [](std::byte b) { return static_cast<details::output_it_value_t<IT>>(b); });
   };
 
-  return accumulate(t,
+  return preorder_accumulate(t,
                     [&](IT out, const auto& value) {
                       using T = std::decay_t<decltype(value)>;
                       if constexpr (details::is_primitive_type_v<T>) {
@@ -403,7 +406,7 @@ std::ostream& debug(std::ostream& os, const T& t) {
 
 template <typename Outer>
 std::size_t hash_value(const Outer& t) {
-  return accumulate<std::size_t>(t, [&](const std::size_t hash, const auto& value) {
+  return preorder_accumulate<std::size_t>(t, [&](const std::size_t hash, const auto& value) {
     // Taken from boost::hash_combine
     const auto hash_combine = [](std::size_t seed, std::size_t hash) {
       return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
@@ -463,9 +466,9 @@ std::size_t area(const std::unique_ptr<T>& ptr) {
 
 template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
-  const auto try_visit = [&](const auto & val) {
-    if constexpr (std::is_invocable_v<Visitor, T>) {
-      visitor(t);
+  const auto try_visit = [&](const auto& val) {
+    if constexpr (std::is_invocable_v<Visitor, decltype(val)>) {
+      visitor(val);
     }
   };
 
@@ -495,6 +498,8 @@ Result accumulate(const T& t, F f, Result acc) {
 
 template <typename T, typename Visitor>
 void preorder(const T& t, Visitor visitor) {
+
+
   // visit the value, if the function returns a bool, stop recursing on false
   if constexpr (std::is_invocable_r_v<bool, Visitor, T>) {
     if (!visitor(t)) return;
@@ -524,20 +529,24 @@ void postorder(const T& t, Visitor visitor) {
   }
 }
 
-template <typename Result, typename T>
-Result map(T&& t) {
+template <typename Result, typename T, typename F>
+Result map(T&& t, F f) {
   using DecayedT = std::decay_t<T>;
+
   // Type category needs to align
-  static_assert(details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
+  static_assert(std::is_invocable_r_v<Result, F, DecayedT> || (
+    details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT>
     && details::is_product_type_v<Result> == details::is_product_type_v<DecayedT>
     && details::is_variant_v<Result> == details::is_variant_v<DecayedT>
     && details::is_maybe_type_v<Result> == details::is_maybe_type_v<DecayedT>
-    && details::is_range_v<Result> == details::is_range_v<DecayedT>);
+    && details::is_range_v<Result> == details::is_range_v<DecayedT>));
 
   // Not mapping to raw pointers
   static_assert(!std::is_pointer_v<Result>);
 
-  if constexpr (std::is_same_v<Result, DecayedT>) {
+  if constexpr (std::is_invocable_r_v<Result, F, DecayedT>) {
+    return f(std::forward<T>(t));
+  } else if constexpr (std::is_same_v<Result, DecayedT>) {
     return std::forward<T>(t);
   } else if constexpr (details::is_primitive_type_v<Result>) {
     return static_cast<Result>(t);
@@ -547,17 +556,21 @@ Result map(T&& t) {
 
     static_assert(SrcSize == DstSize);
 
-    return details::map_tuple<Result>(std::forward<T>(t), std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
-    return std::visit([&](auto&& val) {
-        return Result{std::forward<decltype(val)>(val)};
+    return std::visit([&](auto&& val) -> Result {
+      if constexpr (std::is_invocable_v<F, std::decay_t<decltype(val)>>) {
+        return f(std::forward<decltype(val)>(val));
+      } else {
+        return std::forward<decltype(val)>(val);
+      }
     }, std::forward<T>(t));
   } else if constexpr (details::is_pointer_v<Result>) {
     using ElementT = typename Result::element_type;
-    return t? Result{new ElementT{map<ElementT>(*std::forward<T>(t))}} : nullptr;
+    return t ? Result{new ElementT{map<ElementT>(*std::forward<T>(t), f)}} : nullptr;
   } else if constexpr (details::is_optional_v<Result>) {
-    return t? Result{map<typename Result::value_type>(*std::forward<T>(t))} : std::nullopt;
+    return t? Result{map<typename Result::value_type>(*std::forward<T>(t), f)} : std::nullopt;
   } else if constexpr (details::is_range_v<Result>) {
     Result range{};
     if constexpr (details::is_reserveable_v<Result>) range.reserve(std::distance(std::begin(t), std::end(t)));
@@ -569,17 +582,17 @@ Result map(T&& t) {
     if constexpr (std::is_reference_v<T>) {
       for(const auto& val : t) {
         if constexpr (details::is_array_v<Result>) {
-          range[i++] = map<DstType>(val);
+          range[i++] = map<DstType>(val, f);
         } else {
-          range.insert(range.end(), map<DstType>(val));
+          range.insert(range.end(), map<DstType>(val, f));
         }
       }
     } else {
       for(auto&& val : t) {
         if constexpr (details::is_array_v<Result>) {
-          range[i++] = map<DstType>(std::move(val));
+          range[i++] = map<DstType>(std::move(val), f);
         } else {
-          range.insert(range.end(), map<DstType>(std::move(val)));
+          range.insert(range.end(), map<DstType>(std::move(val), f));
         }
       }
     }

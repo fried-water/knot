@@ -37,7 +37,7 @@ TEST(Map, product) {
 
 TEST(Map, range) {
   const std::vector<P1> expected_p1{{1, 3}, {2, 4}};
-  const std::map<int, int> expected_map{{1, 3}, {2, 4}};
+  
 
   const auto vec1 = knot::map<std::vector<P1>>(std::vector<P2>{{1, 3}, {2, 4}});
   EXPECT_EQ(expected_p1, vec1);
@@ -46,7 +46,14 @@ TEST(Map, range) {
   EXPECT_EQ(expected_p1, vec2);
 
   const auto map1 = knot::map<std::map<int, int>>(expected_p1);
+  const std::map<int, int> expected_map{{1, 3}, {2, 4}};
   EXPECT_EQ(expected_map, map1);
+
+  // inner accumuate override
+  const auto vec3 = knot::map<std::vector<int>>(std::vector<std::vector<int>>{{1, 3}, {2, 4}},
+    [](const std::vector<int>& v) { return std::accumulate(v.begin(), v.end(), 0); });
+  const std::vector<int> expected_acc{4, 6};
+  EXPECT_EQ(expected_acc, vec3);
 }
 
 TEST(Map, maybe) {
@@ -70,6 +77,20 @@ TEST(Map, variant) {
   const auto var = knot::map<std::variant<int, char>>(std::variant<int>{1});
   const auto expected = std::variant<int, char>{1}; 
   EXPECT_EQ(expected, var);
+
+  const auto var_override = knot::map<std::variant<int, std::size_t>>(std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
+  const auto expected_override = std::variant<int, std::size_t>{3ul}; 
+  EXPECT_EQ(expected_override, var_override);
+}
+
+TEST(Map, override) {
+  const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}), 
+    [](const std::string& str) {
+      return str.size();
+    });
+  const P2 expected_p2{1, 3};
+
+  EXPECT_EQ(expected_p2, p2);
 }
 
 struct MoveOnly {
@@ -80,6 +101,9 @@ struct MoveOnly {
 TEST(Map, move_only) {
   // identity
   knot::map<MoveOnly>(MoveOnly{});
+
+  // override
+  knot::map<MoveOnly>(MoveOnly{}, [](MoveOnly m) { return m; });
 
   // product
   knot::map<std::tuple<MoveOnly, MoveOnly>>(std::make_pair(MoveOnly{}, MoveOnly{}));
@@ -94,5 +118,7 @@ TEST(Map, move_only) {
 
   // variant
   knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}});
-}
 
+  // variant override
+  knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}}, [](MoveOnly m) { return m; });
+}

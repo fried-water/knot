@@ -68,7 +68,7 @@ TEST(Visit, stop_searching) {
   const std::vector<std::tuple<int>> tuples{{1}, {2}, {3}};
 
   int visited = 0;
-  knot::visit(tuples, [&](const auto& t) {
+  knot::preorder(tuples, [&](const auto& t) {
     visited++;
     // Should never visit ints
     const bool is_int = std::is_same_v<int, std::decay_t<decltype(t)>>;
@@ -86,11 +86,7 @@ TEST(Visit, BigObject) {
   const Bbox big_box{Point{0, 0}, Point{50, 50}};
 
   std::vector<Bbox> boxes;
-  knot::visit(example_big_object(), [&](const auto& t) {
-    if constexpr (std::is_same_v<Bbox, std::decay_t<decltype(t)>>) {
-      boxes.push_back(t);
-    }
-  });
+  knot::preorder(example_big_object(), [&](const Bbox& t) { boxes.push_back(t); });
 
   const std::vector<Bbox> expected_boxes{small_box, big_box,   small_box, big_box,   small_box,
                                          big_box,   small_box, big_box,   small_box, big_box};
