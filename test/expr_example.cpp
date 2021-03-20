@@ -25,11 +25,15 @@ struct UnaryExpr {
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::preorder_accumulate(expr, [desired_op](int count, Op op) { return op == desired_op ? count + 1 : count; }, 0);
+  return knot::preorder_accumulate(expr, [desired_op](int acc, Op op) {
+    return op == desired_op ? acc + 1 : acc;
+  }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
-  return knot::preorder(expr, [](int leaf) { std::cout << "Leaf: " << leaf << '\n'; });
+  return knot::preorder(expr, [](int leaf) {
+    std::cout << "Leaf: " << leaf << '\n';
+  });
 }
 
 Expr binary(Op op, Expr lhs, Expr rhs) {

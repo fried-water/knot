@@ -43,40 +43,25 @@ struct UnaryExpr {
 
 void example(const Expr& expr) {
   std::size_t hash = knot::hash_value(expr);
-  std::cout << knot::debug_string(expr) << '\n';
+  std::cout << knot::debug(expr) << '\n';
 
   std::vector<uint8_t> bytes = knot::serialize(expr);
   std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
 
   // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
-  assert(deserialized.has_value() && knot::debug_string(expr) == knot::debug_string(*deserialized));
+  assert(deserialized.has_value() && knot::debug(expr) == knot::debug(*deserialized));
 }
 
-int num_add_ops(const Expr& expr) {
-  return knot::accumulate(expr, [](Op op, int count) {
-    return op == Op::Add ? count + 1 : count;
+int num_ops(const Expr& expr, const Op desired_op) {
+  return knot::preorder_accumulate(expr, [desired_op](int acc, Op op) {
+    return op == desired_op ? acc + 1 : acc;
   }, 0);
 }
 
 void dump_leaf_values(const Expr& expr) {
-  return knot::visit(expr, [](int leaf) {
-    std::cout << "Leaf: " << leaf << '\n'; 
+  return knot::preorder(expr, [](int leaf) {
+    std::cout << "Leaf: " << leaf << '\n';
   });
 }
 
-int eval(const Expr& expr) {
-  struct EvalVisitor {
-    int operator()(const BinaryExpr& expr) const {
-      const int lhs = knot::evaluate<int>(expr.lhs, EvalVisitor{});
-      const int rhs = knot::evaluate<int>(expr.rhs, EvalVisitor{});
-      return expr.op == Op::Add ? lhs + rhs : lhs - rhs;
-    }
-
-    int operator()(const UnaryExpr& expr) const {
-      const int child = knot::evaluate<int>(expr.child, EvalVisitor{});
-      return expr.op == Op::Add ? child : -child;
-    }
-  };
-  return knot::evaluate<int>(expr, EvalVisitor{});
-}
 ```

@@ -82,6 +82,11 @@ auto as_tie(const std::pair<First, Second>& pair) {
   return std::tie(pair.first, pair.second);
 }
 
+template <typename First, typename Second>
+auto as_tie(std::pair<First, Second>&& pair) {
+  return std::forward_as_tuple(std::move(pair.first), std::move(pair.second));
+}
+
 template <typename, typename = void>
 struct is_tieable : std::false_type {};
 template <typename T>
@@ -118,8 +123,8 @@ template <typename T>
 struct tuple_from_tie;
 
 template <typename... Ts>
-struct tuple_from_tie<std::tuple<Ts&...>> {
-  using type = typename std::tuple<std::remove_const_t<Ts>...>;
+struct tuple_from_tie<std::tuple<Ts...>> {
+  using type = typename std::tuple<std::decay_t<Ts>...>;
 };
 
 template <typename T>
@@ -140,14 +145,9 @@ std::tuple<Ts...>&& as_tuple(std::tuple<Ts...>&& tuple) {
   return std::move(tuple);
 }
 
-template <typename First, typename Second>
-std::tuple<First, Second> as_tuple(std::pair<First, Second>&& pair) {
-  return {std::move(pair.first), std::move(pair.second)};
-}
-
 template <typename T>
-auto as_tuple(const T& tieable) {
-  return as_tie(tieable);
+auto as_tuple(T&& tieable) {
+  return as_tie(std::forward<T>(tieable));
 }
 
 // Generic maybe type utilities (optional, pointers)

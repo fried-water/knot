@@ -98,6 +98,14 @@ struct MoveOnly {
   MoveOnly(MoveOnly&&) = default;
 };
 
+struct OuterMoveOnly {
+  MoveOnly x;
+
+  // to map move only object in structs an && as_tie is required
+  friend auto as_tie(const OuterMoveOnly& m) { return std::tie(m.x); }
+  friend auto as_tie(OuterMoveOnly&& m) { return std::forward_as_tuple(std::move(m.x)); }
+};
+
 TEST(Map, move_only) {
   // identity
   knot::map<MoveOnly>(MoveOnly{});
@@ -106,9 +114,11 @@ TEST(Map, move_only) {
   knot::map<MoveOnly>(MoveOnly{}, [](MoveOnly m) { return m; });
 
   // product
-  knot::map<std::tuple<MoveOnly, MoveOnly>>(std::make_pair(MoveOnly{}, MoveOnly{}));
-  knot::map<std::pair<MoveOnly, MoveOnly>>(std::make_tuple(MoveOnly{}, MoveOnly{}));
-  // structs would require a 'moved from' as_tie()
+  knot::map<std::tuple<MoveOnly, MoveOnly>>(std::pair(MoveOnly{}, MoveOnly{}));
+  knot::map<std::pair<MoveOnly, MoveOnly>>(std::tuple(MoveOnly{}, MoveOnly{}));
+  knot::map<std::pair<MoveOnly, MoveOnly>>(std::tuple(MoveOnly{}, MoveOnly{}));
+  knot::map<std::tuple<MoveOnly>>(OuterMoveOnly{});
+  knot::map<OuterMoveOnly>(std::tuple(MoveOnly{}));
 
   // range
   knot::map<std::map<int, MoveOnly>>(std::vector<std::pair<int, MoveOnly>>{});
