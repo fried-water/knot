@@ -1,7 +1,6 @@
 #include "gtest/gtest.h"
 
 #include "knot.h"
-#include "test_structs.h"
 
 using knot::details::as_tie;
 using knot::details::is_tieable_v;
@@ -34,4 +33,24 @@ struct MemberFns {
 };
 static_assert(is_tieable_v<MemberFns>);
 
+struct ForwardTest {
+  std::unique_ptr<int> ptr;
+  float x;
+};
+static_assert(is_tieable_v<MemberFns>);
+
+}
+
+TEST(AutoTie, forwarding) {
+  ForwardTest s{std::make_unique<int>(5), 4};
+
+  std::tuple<std::unique_ptr<int>&, float&> lvalue_tie = as_tie(s);
+  std::tuple<std::unique_ptr<int>&&, float&&> rvalue_tie = as_tie(std::move(s));
+
+  std::get<1>(lvalue_tie) = 1;
+  std::unique_ptr<int> ptr = std::get<0>(std::move(rvalue_tie));
+
+  EXPECT_EQ(1, s.x);
+  EXPECT_EQ(nullptr, s.ptr);
+  EXPECT_EQ(5, *ptr);
 }
