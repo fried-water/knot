@@ -6,13 +6,42 @@
 namespace knot {
 namespace details {
 
+struct filler {
+  // Exception for std::optional<T> is needed because optional has a constructor
+  // from U if U is convertable to T and filler is convertable to everything
+  template <typename T, typename = std::enable_if_t<!is_optional_v<T>>>
+  operator T();
+};
+
+template <typename T, typename Seq = std::index_sequence<>, typename = void>
+struct aggregate_arity : Seq {};
+
+template <typename T, std::size_t... Is>
+struct aggregate_arity<T, std::index_sequence<Is...>,
+                       std::void_t<decltype(T{std::declval<filler>(), (Is, std::declval<filler>())...})>>
+    : aggregate_arity<T, std::index_sequence<Is..., sizeof...(Is)>> {};
+
+template <typename T>
+constexpr std::enable_if_t<std::is_aggregate_v<T>, std::size_t> arity() {
+  return aggregate_arity<std::decay_t<T>>::size();
+}
+
+template<typename T>
+struct any_base {
+    operator T() = delete;
+    template<typename U, typename = std::enable_if_t<std::is_base_of_v<U, T>>> operator U();
+};
+
+template<typename, typename = void> struct has_any_base : std::false_type {};
+
+template<typename T> struct has_any_base<T, std::void_t<decltype(T{any_base<T>{}})>> : std::true_type {};
+
+
 // This auto generates as_tie() for aggregate structs with no base classes
 template <typename T>
-auto as_tie(const T& t, std::enable_if_t<std::is_aggregate_v<T> && !is_array_v<T> && !std::is_polymorphic_v<T> &&
-                                             // Techinically it can't have any base classes
-                                             // no way to check that generically
-                                             arity<T>() <= 16,
-                                         int> = 0) {
+auto as_tie(const T& t, 
+  std::enable_if_t<std::is_aggregate_v<T> && !is_array_v<T> && !has_any_base<T>::value && arity<T>() <= 16, int> = 0)
+{
   constexpr std::size_t my_arity = arity<T>();
 
   if constexpr (my_arity == 0) {

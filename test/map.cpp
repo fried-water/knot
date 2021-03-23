@@ -114,11 +114,11 @@ TEST(Map, move_only) {
   knot::map<MoveOnly>(MoveOnly{}, [](MoveOnly m) { return m; });
 
   // product
-  knot::map<std::tuple<MoveOnly, MoveOnly>>(std::pair(MoveOnly{}, MoveOnly{}));
-  knot::map<std::pair<MoveOnly, MoveOnly>>(std::tuple(MoveOnly{}, MoveOnly{}));
-  knot::map<std::pair<MoveOnly, MoveOnly>>(std::tuple(MoveOnly{}, MoveOnly{}));
+  knot::map<std::tuple<MoveOnly, MoveOnly>>(std::make_pair(MoveOnly{}, MoveOnly{}));
+  knot::map<std::pair<MoveOnly, MoveOnly>>(std::make_tuple(MoveOnly{}, MoveOnly{}));
+  knot::map<std::pair<MoveOnly, MoveOnly>>(std::make_tuple(MoveOnly{}, MoveOnly{}));
   knot::map<std::tuple<MoveOnly>>(OuterMoveOnly{});
-  knot::map<OuterMoveOnly>(std::tuple(MoveOnly{}));
+  knot::map<OuterMoveOnly>(std::make_tuple(MoveOnly{}));
 
   // range
   knot::map<std::map<int, MoveOnly>>(std::vector<std::pair<int, MoveOnly>>{});
