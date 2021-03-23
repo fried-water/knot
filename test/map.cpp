@@ -100,10 +100,6 @@ struct MoveOnly {
 
 struct OuterMoveOnly {
   MoveOnly x;
-
-  // to map move only object in structs an && as_tie is required
-  friend auto as_tie(const OuterMoveOnly& m) { return std::tie(m.x); }
-  friend auto as_tie(OuterMoveOnly&& m) { return std::forward_as_tuple(std::move(m.x)); }
 };
 
 TEST(Map, move_only) {
