@@ -13,16 +13,27 @@ static_assert(is_tieable_v<Empty>);
 struct Derived : Empty {};
 static_assert(!is_tieable_v<Derived>);
 
-struct Virtual { virtual int foo() = 0; };
+struct Virtual {
+  virtual int foo() = 0;
+};
 static_assert(!is_tieable_v<Virtual>);
 
-struct FewMembers { int x; float y; };
+struct FewMembers {
+  int x;
+  float y;
+};
 static_assert(is_tieable_v<FewMembers>);
 
-struct OptionalMember { std::optional<int> opt; };
+struct OptionalMember {
+  std::optional<int> opt;
+};
 static_assert(is_tieable_v<OptionalMember>);
 
-struct Compound { FewMembers f; Empty e; OptionalMember o; };
+struct Compound {
+  FewMembers f;
+  Empty e;
+  OptionalMember o;
+};
 static_assert(is_tieable_v<Compound>);
 
 struct MemberFns {
@@ -39,7 +50,7 @@ struct ForwardTest {
 };
 static_assert(is_tieable_v<MemberFns>);
 
-}
+}  // namespace
 
 TEST(AutoTie, forwarding) {
   ForwardTest s{std::make_unique<int>(5), 4};

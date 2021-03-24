@@ -55,11 +55,14 @@ struct is_reserveable<T, std::void_t<decltype(std::declval<T>().reserve(0))>> : 
 template <typename T>
 inline constexpr bool is_reserveable_v = is_reserveable<T>::value;
 
-
 template <typename T, typename Enable = void>
-struct output_it_value { using type = uint8_t; };
+struct output_it_value {
+  using type = uint8_t;
+};
 template <typename T>
-struct output_it_value<T, std::void_t<decltype(*std::declval<T>() = std::byte{})>> { using type = std::byte; };
+struct output_it_value<T, std::void_t<decltype(*std::declval<T>() = std::byte{})>> {
+  using type = std::byte;
+};
 template <typename T>
 using output_it_value_t = typename output_it_value<T>::type;
 

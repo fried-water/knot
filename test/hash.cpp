@@ -11,7 +11,7 @@ std::size_t hash_combine(std::size_t seed, std::size_t hash) {
   return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
 }
 
-}
+}  // namespace
 
 TEST(Hash, primitive) {
   const std::size_t expected_hash = hash_combine(0, 5);

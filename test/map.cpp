@@ -2,19 +2,21 @@
 
 #include "knot.h"
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
-#include <map>
 
-struct P1 { 
+struct P1 {
   KNOT_COMPAREABLE(P1);
-  int x; int y;
+  int x;
+  int y;
 };
 
-struct P2 { 
+struct P2 {
   KNOT_COMPAREABLE(P2);
-  int x; int y;
+  int x;
+  int y;
 };
 
 TEST(Map, primitive) {
@@ -37,7 +39,6 @@ TEST(Map, product) {
 
 TEST(Map, range) {
   const std::vector<P1> expected_p1{{1, 3}, {2, 4}};
-  
 
   const auto vec1 = knot::map<std::vector<P1>>(std::vector<P2>{{1, 3}, {2, 4}});
   EXPECT_EQ(expected_p1, vec1);
@@ -50,8 +51,9 @@ TEST(Map, range) {
   EXPECT_EQ(expected_map, map1);
 
   // inner accumuate override
-  const auto vec3 = knot::map<std::vector<int>>(std::vector<std::vector<int>>{{1, 3}, {2, 4}},
-    [](const std::vector<int>& v) { return std::accumulate(v.begin(), v.end(), 0); });
+  const auto vec3 =
+      knot::map<std::vector<int>>(std::vector<std::vector<int>>{{1, 3}, {2, 4}},
+                                  [](const std::vector<int>& v) { return std::accumulate(v.begin(), v.end(), 0); });
   const std::vector<int> expected_acc{4, 6};
   EXPECT_EQ(expected_acc, vec3);
 }
@@ -75,19 +77,18 @@ TEST(Map, maybe) {
 
 TEST(Map, variant) {
   const auto var = knot::map<std::variant<int, char>>(std::variant<int>{1});
-  const auto expected = std::variant<int, char>{1}; 
+  const auto expected = std::variant<int, char>{1};
   EXPECT_EQ(expected, var);
 
-  const auto var_override = knot::map<std::variant<int, std::size_t>>(std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
-  const auto expected_override = std::variant<int, std::size_t>{3ul}; 
+  const auto var_override = knot::map<std::variant<int, std::size_t>>(
+      std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
+  const auto expected_override = std::variant<int, std::size_t>{3ul};
   EXPECT_EQ(expected_override, var_override);
 }
 
 TEST(Map, override) {
-  const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}), 
-    [](const std::string& str) {
-      return str.size();
-    });
+  const auto p2 =
+      knot::map<P2>(std::make_pair(1, std::string{"abc"}), [](const std::string& str) { return str.size(); });
   const P2 expected_p2{1, 3};
 
   EXPECT_EQ(expected_p2, p2);

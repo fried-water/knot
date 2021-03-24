@@ -9,14 +9,12 @@ namespace {
 
 std::vector<std::byte> as_bytes(std::initializer_list<uint8_t> chars) {
   std::vector<std::byte> bytes;
-  std::transform(chars.begin(), chars.end(), std::back_inserter(bytes), [](uint8_t c) {
-    return std::byte{c};
-  });
+  std::transform(chars.begin(), chars.end(), std::back_inserter(bytes), [](uint8_t c) { return std::byte{c}; });
 
   return bytes;
 }
 
-}
+}  // namespace
 
 TEST(Serialize, primitive) {
   const std::vector<std::byte> bytes = knot::serialize(5);

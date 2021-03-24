@@ -22,16 +22,22 @@ struct aggregate_arity<T, std::index_sequence<Is...>,
     : aggregate_arity<T, std::index_sequence<Is..., sizeof...(Is)>> {};
 
 template <typename T>
-constexpr std::enable_if_t<std::is_aggregate_v<T>, std::size_t> arity() { return aggregate_arity<T>::size(); }
+constexpr std::enable_if_t<std::is_aggregate_v<T>, std::size_t> arity() {
+  return aggregate_arity<T>::size();
+}
 
-template<typename T>
+template <typename T>
 struct any_base {
-    operator T() = delete;
-    template<typename U, typename = std::enable_if_t<std::is_base_of_v<U, T>>> operator U();
+  operator T() = delete;
+
+  template <typename U, typename = std::enable_if_t<std::is_base_of_v<U, T>>>
+  operator U();
 };
 
-template<typename, typename = void> struct has_any_base : std::false_type {};
-template<typename T> struct has_any_base<T, std::void_t<decltype(T{any_base<T>{}})>> : std::true_type {};
+template <typename, typename = void>
+struct has_any_base : std::false_type {};
+template <typename T>
+struct has_any_base<T, std::void_t<decltype(T{any_base<T>{}})>> : std::true_type {};
 
 template <typename T, typename U>
 constexpr decltype(auto) aliasing_forward(U&& obj) noexcept {
@@ -44,12 +50,9 @@ constexpr decltype(auto) aliasing_forward(U&& obj) noexcept {
 
 // This auto generates as_tie() for aggregate structs with no base classes
 template <typename T>
-auto as_tie(T&& t,
-  std::enable_if_t<std::is_aggregate_v<std::decay_t<T>>
-              && !is_array_v<std::decay_t<T>>
-              && !has_any_base<std::decay_t<T>>::value
-              && arity<std::decay_t<T>>() <= 16, int> = 0)
-{
+auto as_tie(T&& t, std::enable_if_t<std::is_aggregate_v<std::decay_t<T>> && !is_array_v<std::decay_t<T>> &&
+                                        !has_any_base<std::decay_t<T>>::value && arity<std::decay_t<T>>() <= 16,
+                                    int> = 0) {
   constexpr std::size_t my_arity = arity<std::decay_t<T>>();
 
   if constexpr (my_arity == 0) {
@@ -65,43 +68,77 @@ auto as_tie(T&& t,
     return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c));
   } else if constexpr (my_arity == 4) {
     auto&& [a, b, c, d] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d));
   } else if constexpr (my_arity == 5) {
     auto&& [a, b, c, d, e] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e));
   } else if constexpr (my_arity == 6) {
     auto&& [a, b, c, d, e, f] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f));
   } else if constexpr (my_arity == 7) {
     auto&& [a, b, c, d, e, f, g] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g));
   } else if constexpr (my_arity == 8) {
     auto&& [a, b, c, d, e, f, g, h] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h));
   } else if constexpr (my_arity == 9) {
     auto&& [a, b, c, d, e, f, g, h, i] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i));
   } else if constexpr (my_arity == 10) {
     auto&& [a, b, c, d, e, f, g, h, i, j] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j));
   } else if constexpr (my_arity == 11) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j), aliasing_forward<T>(k));
   } else if constexpr (my_arity == 12) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k, l] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l));
   } else if constexpr (my_arity == 13) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k, l, m] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l), aliasing_forward<T>(m));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l),
+                                 aliasing_forward<T>(m));
   } else if constexpr (my_arity == 14) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k, l, m, n] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l), aliasing_forward<T>(m), aliasing_forward<T>(n));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l),
+                                 aliasing_forward<T>(m), aliasing_forward<T>(n));
   } else if constexpr (my_arity == 15) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l), aliasing_forward<T>(m), aliasing_forward<T>(n), aliasing_forward<T>(o));
+    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c),
+                                 aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f),
+                                 aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i),
+                                 aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l),
+                                 aliasing_forward<T>(m), aliasing_forward<T>(n), aliasing_forward<T>(o));
   } else if constexpr (my_arity == 16) {
     auto&& [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p] = std::forward<T>(t);
-    return std::forward_as_tuple(aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d), aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h), aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l), aliasing_forward<T>(m), aliasing_forward<T>(n), aliasing_forward<T>(o), aliasing_forward<T>(p));
+    return std::forward_as_tuple(
+        aliasing_forward<T>(a), aliasing_forward<T>(b), aliasing_forward<T>(c), aliasing_forward<T>(d),
+        aliasing_forward<T>(e), aliasing_forward<T>(f), aliasing_forward<T>(g), aliasing_forward<T>(h),
+        aliasing_forward<T>(i), aliasing_forward<T>(j), aliasing_forward<T>(k), aliasing_forward<T>(l),
+        aliasing_forward<T>(m), aliasing_forward<T>(n), aliasing_forward<T>(o), aliasing_forward<T>(p));
   }
 }
 
