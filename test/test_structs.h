@@ -6,22 +6,33 @@
 #include <unordered_map>
 #include <unordered_set>
 
+template <typename First, typename Second>
+struct Pair {
+  First first;
+  Second second;
+
+  KNOT_ORDERED(Pair);
+};
+
+template <typename First, typename Second>
+Pair(First, Second)->Pair<First, Second>;
+
 struct Point {
-  KNOT_ORDERED(Point)
   int x = 0;
   int y = 0;
+
+  KNOT_ORDERED(Point);
 };
 
 struct Bbox {
-  KNOT_ORDERED(Bbox)
   Point min;
   Point max;
+
+  KNOT_ORDERED(Bbox);
 };
 
 // BigObject can't be ordered since unordered containers dont have order operators
 struct BigObject {
-  KNOT_COMPAREABLE(BigObject)
-
   std::set<Bbox> a;
   std::unordered_set<Bbox, knot::Hash> b;
   std::map<Bbox, int> c;
@@ -31,6 +42,8 @@ struct BigObject {
   std::array<Bbox, 2> g;
   std::unique_ptr<Bbox> h;
   std::variant<int, Bbox> i;
+
+  KNOT_COMPAREABLE(BigObject);
 };
 
 inline BigObject example_big_object() {
