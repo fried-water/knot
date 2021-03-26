@@ -236,6 +236,12 @@ Result make_from_tuple(T&& t, std::index_sequence<Is...>) {
   return Result{std::get<Is>(std::forward<T>(t))...};
 }
 
+struct DebugOverloads {
+  void operator()(std::ostream& os, const std::string& str) const { os << str; }
+  void operator()(std::ostream& os, const char* str) const { os << str; }
+  void operator()(std::ostream& os, std::string_view str) const { os << str; }
+};
+
 }  // namespace details
 
 template <typename T>
@@ -364,14 +370,16 @@ std::string debug(const T& t) {
 
 template <typename T>
 std::ostream& debug(std::ostream& os, const T& t) {
-  static_assert(details::is_knot_supported_type_v<T>);
+  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<details::DebugOverloads, std::ostream& ,T>);
 
-  if constexpr (std::is_arithmetic_v<T>) {
+  if constexpr(std::is_invocable_v<details::DebugOverloads, std::ostream&, T>) {
+    details:: DebugOverloads{}(os, t);
+  } else if constexpr(std::is_same_v<T, bool>) {
+    os << (t ? "true" : "false"); // special case bool due to implicit conversions
+  } else if constexpr (std::is_arithmetic_v<T>) {
     os << t;
   } else if constexpr (std::is_enum_v<T>) {
     os << static_cast<std::underlying_type_t<T>>(t);
-  } else if constexpr (std::is_same_v<T, std::string>) {
-    os << "\"" << t << "\"";  // Special case string
   } else if constexpr (details::is_maybe_type_v<T>) {
     static_cast<bool>(t) ? debug(os, *t) : os << "none";
   } else if constexpr (details::is_variant_v<T> || details::is_range_v<T> || details::is_product_type_v<T>) {
@@ -382,7 +390,10 @@ std::ostream& debug(std::ostream& os, const T& t) {
     else
       os << "[" << std::distance(t.begin(), t.end()) << "; ";
 
-    visit(t, [&os](const auto& inner) { debug(os, inner); });
+    int i = 0;
+    visit(t, [&](const auto& inner) {
+      debug(i++ == 0 ? os : os << ", ", inner);
+    });
 
     if constexpr (details::is_variant_v<T>)
       os << ">";
@@ -418,10 +429,10 @@ std::size_t hash_value(const Outer& t) {
 }
 
 template <typename T>
-std::size_t area(const std::vector<T>& v);
+std::size_t area(const std::vector<T>&);
 
 template <typename T>
-std::size_t area(const std::unique_ptr<T>& v);
+std::size_t area(const std::unique_ptr<T>&);
 
 template <typename T>
 std::size_t area(const T& t) {

@@ -1,6 +1,8 @@
 #ifndef TEST_STRUCTS
 #define TEST_STRUCTS
 
+#include "knot.h"
+
 #include <map>
 #include <set>
 #include <unordered_map>
