@@ -555,9 +555,9 @@ Result map(T&& t, F f) {
     using ResultTiedType =  details::decayed_tie_t<Result>;
     if constexpr(details::is_tuple_v<ResultTiedType>) {
       constexpr std::size_t SrcSize = std::tuple_size_v<ResultTiedType>;
-      // constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
+      constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
 
-      // static_assert(SrcSize == DstSize);
+      static_assert(SrcSize == DstSize);
 
       return details::map_tuple<Result, ResultTiedType>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
     } else {

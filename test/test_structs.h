@@ -57,21 +57,6 @@ struct VariantWrapper {
   friend const auto& as_tie(const VariantWrapper& i) { return i.x; }
 };
 
-
-namespace knot {
-template <typename T, typename = void>
-struct decayed_tie2 {
-  using type = T;
-};
-
-template <typename T>
-struct decayed_tie2<T, std::enable_if_t<is_tieable_v<T>>> : decayed_tie2<decltype(as_tie(std::declval<T>()))> {};
-
-template <typename T>
-using decayed_tie2_t = typename decayed_tie2<T>::type;
-
-
-}
 // BigObject can't be ordered since unordered containers dont have order operators
 struct BigObject {
   std::set<Bbox> a;
