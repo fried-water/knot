@@ -2,8 +2,8 @@
 
 #include "knot.h"
 
-using knot::details::as_tie;
-using knot::details::is_tieable_v;
+using knot::as_tie;
+using knot::is_tieable_v;
 
 namespace {
 

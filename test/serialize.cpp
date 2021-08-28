@@ -162,3 +162,17 @@ TEST(Serialize, ByteTypes) {
   const auto result_byte = knot::deserialize<int>(buf_byte.begin(), buf_byte.end());
   EXPECT_EQ(5, result_byte);
 }
+
+TEST(Serialize, non_tuple_tie) {
+  std::vector<std::byte> bytes = knot::serialize(IntWrapper{5});
+  const auto result1 = knot::deserialize<IntWrapper>(bytes.begin(), bytes.end());
+  EXPECT_EQ(IntWrapper{5}, result1);
+
+  bytes = knot::serialize(VariantWrapper{5.0f});
+  const auto result2 = knot::deserialize<VariantWrapper>(bytes.begin(), bytes.end());
+  EXPECT_EQ(VariantWrapper{5.0f}, result2);
+
+  bytes = knot::serialize(VecWrapper{{1, 2, 3}});
+  const auto result3 = knot::deserialize<VecWrapper>(bytes.begin(), bytes.end());
+  EXPECT_EQ((VecWrapper{{1, 2, 3}}), result3);
+}

@@ -16,6 +16,6 @@ TEST(Ops, ordered) {
 }
 
 TEST(Ops, rvalues) {
-  EXPECT_TRUE((Pair{1, 1}) == (Pair{1, 1}));
-  EXPECT_TRUE((Pair{1, 1}) != (Pair{1, 2}));
+  EXPECT_TRUE((Pair<int, int>{1, 1}) == (Pair<int, int>{1, 1}));
+  EXPECT_TRUE((Pair<int, int>{1, 1}) != (Pair<int, int>{1, 2}));
 }

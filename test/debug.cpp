@@ -62,3 +62,9 @@ TEST(Debug, variant) {
   EXPECT_EQ("<(45, 89)>", knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));
   EXPECT_EQ("<[3; a, b, c]>", knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
 }
+
+TEST(Debug, non_tuple_tieable) {
+  EXPECT_EQ("5", knot::debug(IntWrapper{5}));
+  EXPECT_EQ("[3; 1, 2, 3]", knot::debug(VecWrapper{{1, 2, 3}}));
+  EXPECT_EQ("<5>", knot::debug(VariantWrapper{5}));
+}

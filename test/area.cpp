@@ -26,8 +26,12 @@ struct Combo {
 struct TriviallyDestructibleUntieable {
   TriviallyDestructibleUntieable(){} // no longer an aggregate
 };
-static_assert(!knot::details::is_tieable_v<TriviallyDestructibleUntieable>);
+static_assert(!knot::is_tieable_v<TriviallyDestructibleUntieable>);
 static_assert(std::is_trivially_destructible_v<TriviallyDestructibleUntieable>);
+
+struct MemoryWrapper {
+  friend auto as_tie(MemoryWrapper) { return Memory(5); }
+};
 
 }
 
@@ -85,4 +89,11 @@ TEST(Area, array) {
 
 TEST(Area, trivially_destructible) {
   EXPECT_EQ(0, knot::area(TriviallyDestructibleUntieable{}));
+}
+
+TEST(Area, non_tuple_tie) {
+  EXPECT_EQ(5, knot::area(MemoryWrapper{}));
+  EXPECT_EQ(0, knot::area(IntWrapper{}));
+  EXPECT_EQ(12, knot::area(VecWrapper{{1, 2, 3}}));
+  EXPECT_EQ(0, knot::area(VariantWrapper{1}));
 }

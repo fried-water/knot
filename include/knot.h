@@ -74,8 +74,6 @@ std::size_t area(const T&);
 template <typename Result, typename T, typename F = std::tuple<>>
 Result map(T&&, F = {});
 
-namespace details {
-
 // std as_tie() overload
 template <typename First, typename Second>
 auto as_tie(const std::pair<First, Second>& pair) {
@@ -94,9 +92,11 @@ struct is_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::tr
 template <typename T>
 inline constexpr bool is_tieable_v = is_tieable<T>::value;
 
+namespace details {
+
 // We treat tuples, pairs, and tieable structs as product types
 template <typename T>
-inline constexpr bool is_product_type_v = is_tieable_v<T> || is_tuple_v<T>;
+inline constexpr bool is_product_type_v = is_tuple_v<T>;
 
 // We treat optionals, and ptrs as maybe types
 template <typename T>
@@ -107,23 +107,27 @@ inline constexpr bool is_primitive_type_v = std::is_arithmetic_v<T> || std::is_e
 
 template <typename T>
 inline constexpr bool is_knot_supported_type_v =
-    is_product_type_v<T> || is_variant_v<T> || is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
+    is_tieable_v<T> || is_product_type_v<T> || is_variant_v<T> ||
+    is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
 
 // Generic product type utilities (tuple, pair, tieable structs)
 
-template <typename, typename = void>
-struct decayed_tuple;
+template <typename T, typename = void>
+struct decayed_tie {
+  using type = std::decay_t<T>;
+};
 
 template <typename... Ts>
-struct decayed_tuple<std::tuple<Ts...>> {
+struct decayed_tie<std::tuple<Ts...>> {
   using type = std::tuple<std::decay_t<Ts>...>;
 };
 
 template <typename T>
-struct decayed_tuple<T, std::enable_if_t<is_tieable_v<T>>> : decayed_tuple<decltype(as_tie(std::declval<T>()))> {};
+struct decayed_tie<T, std::enable_if_t<is_tieable_v<T>>> : decayed_tie<decltype(as_tie(std::declval<T>()))> {};
 
 template <typename T>
-using decayed_tuple_t = typename decayed_tuple<T>::type;
+using decayed_tie_t = typename decayed_tie<T>::type;
+
 
 template <typename... Ts>
 const auto& as_tuple(const std::tuple<Ts...>& tuple) {
@@ -173,7 +177,7 @@ struct Monad<std::optional<std::pair<First, Second>>> {
 
   template <typename F>
   auto map(F f) && {
-    return make_monad(opt ? std::make_optional(f(std::move(opt->first), std::move(opt->second))) : std::nullopt);
+    return make_monad(opt ? std::optional(f(std::move(opt->first), std::move(opt->second))) : std::nullopt);
   }
 
   operator std::optional<std::pair<First, Second>>() && { return std::move(opt); }
@@ -194,7 +198,7 @@ template <typename T, typename IT>
 std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end) {
   if constexpr (std::tuple_size_v<T> == 0) {
     static_cast<void>(end);  // To suppress warnings about not touching end on this branch
-    return std::make_pair(std::make_tuple(), begin);
+    return std::pair(std::tuple(), begin);
   } else {
     using first_element = std::remove_const_t<std::tuple_element_t<0, T>>;
     using tuple_rest = typename tuple_rest<T>::type;
@@ -202,7 +206,7 @@ std::optional<std::pair<T, IT>> tuple_deserialize(IT begin, IT end) {
     return make_monad(deserialize_partial<first_element>(begin, end)).and_then([end](first_element&& first, IT begin) {
       return make_monad(tuple_deserialize<tuple_rest>(begin, end))
           .map([&first](tuple_rest&& rest, IT begin) {
-            return std::make_pair(T{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))}, begin);
+            return std::pair(T{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))}, begin);
           })
           .get();
     });
@@ -214,7 +218,7 @@ std::optional<std::pair<Variant, IT>> variant_deserialize(IT begin, IT end, std:
                                                           std::index_sequence<Is...>) {
   static constexpr auto options = std::array{+[](IT begin, IT end) {
     return make_monad(deserialize_partial<std::variant_alternative_t<Is, Variant>>(begin, end))
-        .map([](auto&& ele, IT begin) { return std::make_pair(Variant{std::move(ele)}, begin); })
+        .map([](auto&& ele, IT begin) { return std::pair(Variant{std::move(ele)}, begin); })
         .get();
   }...};
   return index >= sizeof...(Is) ? std::nullopt : options[index](begin, end);
@@ -225,15 +229,9 @@ void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
   ((visitor(std::get<Is>(tuple))), ...);
 }
 
-template <typename Result, typename F, typename T, std::size_t... Is>
+template <typename Result, typename Tuple, typename F, typename T, std::size_t... Is>
 Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
-  return Result{
-      map<std::tuple_element_t<Is, decayed_tuple_t<Result>>>(std::get<Is>(as_tuple(std::forward<T>(t))), f)...};
-}
-
-template <typename Result, typename T, std::size_t... Is>
-Result make_from_tuple(T&& t, std::index_sequence<Is...>) {
-  return Result{std::get<Is>(std::forward<T>(t))...};
+  return {map<std::tuple_element_t<Is, Tuple>>(std::get<Is>(std::forward<T>(t)), f)...};
 }
 
 struct DebugOverloads {
@@ -251,32 +249,30 @@ std::vector<std::byte> serialize(const T& t) {
   return buf;
 }
 
-template <typename Outer, typename IT>
-IT serialize(const Outer& t, IT out) {
-  auto serialize_primitive = [](auto value, auto it) {
-    std::array<std::byte, sizeof(value)> array{};
-    std::memcpy(&array, &value, sizeof(value));
+template <typename T, typename IT>
+IT serialize(const T& t, IT it) {
+  if constexpr (is_tieable_v<T>) {
+    return serialize(as_tie(t), it);
+  } else if constexpr (details::is_primitive_type_v<T>) {
+    std::array<std::byte, sizeof(T)> array{};
+    std::memcpy(&array, &t, sizeof(T));
     return std::transform(array.begin(), array.end(), it,
                           [](std::byte b) { return static_cast<details::output_it_value_t<IT>>(b); });
-  };
-
-  return preorder_accumulate(
-      t,
-      [&](IT out, const auto& value) {
-        using T = std::decay_t<decltype(value)>;
-        if constexpr (details::is_primitive_type_v<T>) {
-          return serialize_primitive(value, out);
-        } else if constexpr (details::is_variant_v<T>) {
-          return serialize_primitive(value.index(), out);
-        } else if constexpr (details::is_maybe_type_v<T>) {
-          return serialize_primitive(static_cast<bool>(value), out);
-        } else if constexpr (details::is_range_v<T>) {
-          return serialize_primitive(std::distance(value.begin(), value.end()), out);
-        } else {
-          return out;
-        }
-      },
-      out);
+  } else if constexpr (details::is_variant_v<T>) {
+    return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
+      serialize(t.index(), it));
+  } else if constexpr (details::is_maybe_type_v<T>) {
+    return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
+      serialize(static_cast<bool>(t), it));
+  } else if constexpr (details::is_range_v<T>) {
+    return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
+      serialize(t.size(), it));
+  } else if constexpr (details::is_product_type_v<T>) {
+    return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); }, it);
+  }else {
+    static_assert(!std::is_same_v<T, T>, "Unsupported type in serialize");
+    return it;
+  }
 }
 
 template <typename T, typename IT>
@@ -321,17 +317,17 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
           if (has_value) {
             return details::make_monad(deserialize_partial<typename optional_t::value_type>(begin, end))
                 .map(
-                    [](auto&& inner, IT begin) { return std::make_pair(std::make_optional(std::move(inner)), begin); });
+                    [](auto&& inner, IT begin) { return std::pair(std::make_optional(std::move(inner)), begin); });
           } else {
-            return std::make_pair(std::nullopt, begin);
+            return std::pair(std::nullopt, begin);
           }
         })
         .map([](optional_t&& optional, IT begin) {
-          return std::make_pair(details::from_optional<T>(std::move(optional)), begin);
+          return std::pair(details::from_optional<T>(std::move(optional)), begin);
         });
   } else if constexpr (details::is_range_v<T>) {
     return details::make_monad(deserialize_partial<std::size_t>(begin, end))
-        .and_then([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
+        .map([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
           T range{};
           if constexpr (details::is_reserveable_v<T>) range.reserve(size);
 
@@ -349,13 +345,10 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
           return std::pair<T, IT>{std::move(range), begin};
         });
   } else if constexpr (details::is_product_type_v<T>) {
-    return details::make_monad(details::tuple_deserialize<details::decayed_tuple_t<T>>(begin, end))
-        .map([](auto&& tuple, IT begin) {
-          return std::make_pair(
-              details::make_from_tuple<T>(std::move(tuple),
-                                          std::make_index_sequence<std::tuple_size_v<details::decayed_tuple_t<T>>>()),
-              begin);
-        });
+    return details::tuple_deserialize<T>(begin, end);
+  } else if constexpr (is_tieable_v<T>) {
+    return details::make_monad(deserialize_partial<details::decayed_tie_t<T>>(begin, end))
+        .map([](auto tied_type, IT begin) { return std::pair(map<T>(std::move(tied_type)), begin); });
   } else {
     return std::nullopt;
   }
@@ -370,12 +363,14 @@ std::string debug(const T& t) {
 
 template <typename T>
 std::ostream& debug(std::ostream& os, const T& t) {
-  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<details::DebugOverloads, std::ostream& ,T>);
+  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<details::DebugOverloads, std::ostream&, T>);
 
   if constexpr(std::is_invocable_v<details::DebugOverloads, std::ostream&, T>) {
-    details:: DebugOverloads{}(os, t);
+    details::DebugOverloads{}(os, t);
   } else if constexpr(std::is_same_v<T, bool>) {
     os << (t ? "true" : "false"); // special case bool due to implicit conversions
+  } else if constexpr(is_tieable_v<T>) {
+    return debug(os, as_tie(t));
   } else if constexpr (std::is_arithmetic_v<T>) {
     os << t;
   } else if constexpr (std::is_enum_v<T>) {
@@ -406,26 +401,39 @@ std::ostream& debug(std::ostream& os, const T& t) {
   return os;
 }
 
-template <typename Outer>
-std::size_t hash_value(const Outer& t) {
-  return preorder_accumulate<std::size_t>(t, [&](const std::size_t hash, const auto& value) {
-    // Taken from boost::hash_combine
-    const auto hash_combine = [](std::size_t seed, std::size_t hash) {
-      return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
-    };
+template <typename T>
+std::size_t hash_value(const T& t) {
+  // Taken from boost::hash_combine
+  const auto hash_combine = [](std::size_t seed, std::size_t hash) {
+    return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
+  };
 
-    using T = std::decay_t<decltype(value)>;
-    if constexpr (details::is_primitive_type_v<T> ||
-                  (!details::is_knot_supported_type_v<T> && details::is_std_hashable_v<T>)) {
-      return hash_combine(hash, std::hash<T>{}(value));
-    } else if constexpr (details::is_variant_v<T>) {
-      return hash_combine(hash, value.index());
+  if constexpr (is_tieable_v<T>) {
+    return hash_value(as_tie(t));
+  } else if constexpr (details::is_std_hashable_v<T>) {
+    return std::hash<T>{}(t);
+  } else if constexpr (std::has_unique_object_representations_v<T>) {
+    std::array<std::byte, sizeof(T)> bytes;
+    std::memcpy(bytes.begin(), &t, sizeof(T));
+
+    return std::accumulate(bytes.begin(), bytes.end(), static_cast<std::size_t>(0), [&](std::size_t acc, std::byte b) {
+      return hash_combine(acc, static_cast<std::size_t>(b));
+    });
+  } else if constexpr (details::is_knot_supported_type_v<T>) { 
+    std::size_t initial_value = 0;
+    if constexpr (details::is_variant_v<T>) {
+      initial_value = t.index();
     } else if constexpr (details::is_maybe_type_v<T>) {
-      return hash_combine(hash, static_cast<bool>(value));
-    } else {
-      return hash;
+      initial_value = static_cast<std::size_t>(static_cast<bool>(t));
     }
-  });
+
+    return accumulate<std::size_t>(t, 
+      [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); },
+      initial_value);
+  } else {
+    static_assert(!std::is_same_v<T, T>, "Unsupported type in hash");
+    return 0;
+  }
 }
 
 template <typename T>
@@ -436,21 +444,13 @@ std::size_t area(const std::unique_ptr<T>&);
 
 template <typename T>
 std::size_t area(const T& t) {
-  const auto area_visitor = [](const auto& t) { return area(t); };
+  static_assert(details::is_knot_supported_type_v<T> || std::is_trivially_destructible_v<T>, "Unsupported type in area()");
 
-  if constexpr (std::is_trivially_destructible_v<T>) {
-    return 0;
-  } else if constexpr (details::is_array_v<T>) {
-    return std::accumulate(t.begin(), t.end(), static_cast<std::size_t>(0),
-                           [](std::size_t acc, const auto& t) { return acc + area(t); });
-  } else if constexpr (details::is_product_type_v<T>) {
+  if constexpr (is_tieable_v<T>) {
+    return area(as_tie(t));
+  } else if constexpr (details::is_knot_supported_type_v<T>) {
     return accumulate<std::size_t>(t, [](std::size_t acc, const auto& ele) { return acc + area(ele); });
-  } else if constexpr (details::is_variant_v<T>) {
-    return visit_variant(t, area_visitor);
-  } else if constexpr (details::is_optional_v<T>) {
-    return t ? area(*t) : 0;
-  } else {
-    static_assert(!std::is_same_v<T, T>, "Unsupported type in area()");
+  } else if constexpr (std::is_trivially_destructible_v<T>) {
     return 0;
   }
 }
@@ -474,9 +474,8 @@ void visit(const T& t, Visitor visitor) {
     }
   };
 
-  if constexpr (details::is_tieable_v<T>) {
-    using knot::details::as_tie;
-    details::visit_tuple(as_tie(t), try_visit, std::make_index_sequence<std::tuple_size_v<decltype(as_tie(t))>>());
+  if constexpr (is_tieable_v<T>) {
+    knot::visit(as_tie(t), visitor);
   } else if constexpr (details::is_tuple_v<T>) {
     details::visit_tuple(t, try_visit, std::make_index_sequence<std::tuple_size_v<T>>());
   } else if constexpr (details::is_variant_v<T>) {
@@ -534,7 +533,7 @@ Result map(T&& t, F f) {
   using DecayedT = std::decay_t<T>;
 
   // Type category needs to align
-  static_assert(std::is_invocable_r_v<Result, F, DecayedT> ||
+  static_assert(std::is_invocable_r_v<Result, F, DecayedT> || is_tieable_v<Result> || is_tieable_v<DecayedT> ||
                 (details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT> &&
                  details::is_product_type_v<Result> == details::is_product_type_v<DecayedT> &&
                  details::is_variant_v<Result> == details::is_variant_v<DecayedT> &&
@@ -548,15 +547,29 @@ Result map(T&& t, F f) {
     return f(std::forward<T>(t));
   } else if constexpr (std::is_same_v<Result, DecayedT>) {
     return std::forward<T>(t);
+  } else if constexpr (is_tieable_v<DecayedT>) {
+    return map<Result>(as_tie(std::forward<T>(t)), f);
   } else if constexpr (details::is_primitive_type_v<Result>) {
     return static_cast<Result>(t);
+  } else if constexpr (is_tieable_v<Result>) {
+    using ResultTiedType =  details::decayed_tie_t<Result>;
+    if constexpr(details::is_tuple_v<ResultTiedType>) {
+      constexpr std::size_t SrcSize = std::tuple_size_v<ResultTiedType>;
+      // constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
+
+      // static_assert(SrcSize == DstSize);
+
+      return details::map_tuple<Result, ResultTiedType>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
+    } else {
+      return Result{map<ResultTiedType>(std::forward<T>(t), f)};
+    }
   } else if constexpr (details::is_product_type_v<Result>) {
-    constexpr std::size_t SrcSize = std::tuple_size_v<details::decayed_tuple_t<Result>>;
-    constexpr std::size_t DstSize = std::tuple_size_v<details::decayed_tuple_t<DecayedT>>;
+    constexpr std::size_t SrcSize = std::tuple_size_v<Result>;
+    constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
 
     static_assert(SrcSize == DstSize);
 
-    return details::map_tuple<Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result, Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit(

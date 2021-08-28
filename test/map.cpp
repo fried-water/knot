@@ -2,6 +2,8 @@
 
 #include "knot.h"
 
+#include "test_structs.h"
+
 #include <map>
 #include <memory>
 #include <optional>
@@ -128,4 +130,15 @@ TEST(Map, move_only) {
 
   // variant override
   knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}}, [](MoveOnly m) { return m; });
+}
+
+TEST(Map, non_tuple_tie) {
+  EXPECT_EQ(IntWrapper{5}, knot::map<IntWrapper>(5));
+  EXPECT_EQ(5, knot::map<int>(IntWrapper{5}));
+
+  EXPECT_EQ(VariantWrapper{0.5f}, knot::map<VariantWrapper>(std::variant<int, float>{0.5f}));
+  EXPECT_EQ((std::variant<int, float>{5}), (knot::map<std::variant<int, float>>(VariantWrapper{5})));
+
+  EXPECT_EQ((VecWrapper{{1, 2, 3}}), knot::map<VecWrapper>(std::vector<int>{1, 2, 3}));
+  EXPECT_EQ((std::vector<int>{1, 2, 3}), (knot::map<std::vector<int>>(VecWrapper{{1, 2, 3}})));
 }

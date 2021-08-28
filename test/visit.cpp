@@ -4,7 +4,8 @@
 #include "test_structs.h"
 
 // a variant that contains all types used in this file
-using SomeType = std::variant<int, Point, Bbox, std::optional<Point>, std::vector<Point>, std::variant<int, Point>>;
+using SomeType = std::variant<int, Point, Bbox, std::optional<Point>, std::vector<Point>, std::variant<int, Point>,
+  IntWrapper, VecWrapper, std::vector<int>, VariantWrapper, std::variant<int, float>>;
 
 namespace {
 
@@ -33,7 +34,6 @@ std::vector<SomeType> gather_postorder_objects(const T& t) {
 }
 
 }  // namespace
-
 
 TEST(Visit, primitive) { EXPECT_EQ(std::vector<SomeType>{}, gather_objects(5)); }
 
@@ -79,6 +79,12 @@ TEST(Visit, variant) {
   const std::variant<int, Point> var_int = 5;
   const std::vector<SomeType> expected2{5};
   EXPECT_EQ(expected2, gather_objects(var_int));
+}
+
+TEST(Visit, non_tuple_tie) {
+  EXPECT_EQ(gather_objects(5), gather_objects(IntWrapper{5}));
+  EXPECT_EQ(gather_objects(std::vector<int>{5}), gather_objects(VecWrapper{{5}}));
+  EXPECT_EQ(gather_objects(std::variant<int, float>(5)), gather_objects(VariantWrapper{5}));
 }
 
 TEST(Preorder, primitive) { EXPECT_EQ(std::vector<SomeType>{5}, gather_preorder_objects(5)); }
@@ -156,6 +162,12 @@ TEST(Preorder, BigObject) {
   EXPECT_EQ(expected_boxes, boxes);
 }
 
+TEST(Preorder, non_tuple_tie) {
+  EXPECT_EQ((std::vector<SomeType>{IntWrapper{5}}), gather_preorder_objects(IntWrapper{5}));
+  EXPECT_EQ((std::vector<SomeType>{VecWrapper{{5}}, 5}), gather_preorder_objects(VecWrapper{{5}}));
+  EXPECT_EQ((std::vector<SomeType>{VariantWrapper{5}, 5}), gather_preorder_objects(VariantWrapper{5}));
+}
+
 TEST(Postorder, primitive) { EXPECT_EQ(std::vector<SomeType>{5}, gather_postorder_objects(5)); }
 
 TEST(Postorder, basic_struct) {
@@ -200,4 +212,10 @@ TEST(Postorder, variant) {
   const std::variant<int, Point> var_int = 5;
   const std::vector<SomeType> expected2{5, var_int};
   EXPECT_EQ(expected2, gather_postorder_objects(var_int));
+}
+
+TEST(Postorder, non_tuple_tie) {
+  EXPECT_EQ((std::vector<SomeType>{IntWrapper{5}}), gather_postorder_objects(IntWrapper{5}));
+  EXPECT_EQ((std::vector<SomeType>{5, VecWrapper{{5}}}), gather_postorder_objects(VecWrapper{{5}}));
+  EXPECT_EQ((std::vector<SomeType>{5, VariantWrapper{5}}), gather_postorder_objects(VariantWrapper{5}));
 }
