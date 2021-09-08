@@ -92,6 +92,38 @@ struct is_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::tr
 template <typename T>
 inline constexpr bool is_tieable_v = is_tieable<T>::value;
 
+template <typename T> struct Type { using type = T; };
+
+template<size_t N>
+struct Names {
+  constexpr Names() = default;
+
+  constexpr explicit Names(std::string_view name) : name(name) {}
+
+  constexpr explicit Names(std::string_view name, const std::string_view (&members_)[N])
+    : name(name)
+  {
+    std::copy(std::begin(members_), std::end(members_), std::begin(members));
+  }
+  constexpr explicit Names(const std::string_view (&members_)[N]) {
+    std::copy(std::begin(members_), std::end(members_), std::begin(members));
+  }
+
+  constexpr static size_t member_count() { return N; }
+
+  std::optional<std::string_view> name;
+  std::array<std::string_view, N> members;
+};
+
+Names(std::string_view) -> Names<0>;
+
+template <typename, typename = void>
+struct has_names : std::false_type {};
+template <typename T>
+struct has_names<T, std::void_t<decltype(names(Type<T>{}))>> : std::true_type {};
+template <typename T>
+inline constexpr bool has_names_v = has_names<T>::value;
+
 namespace details {
 
 // We treat tuples, pairs, and tieable structs as product types
@@ -110,12 +142,15 @@ inline constexpr bool is_knot_supported_type_v =
     is_tieable_v<T> || is_product_type_v<T> || is_variant_v<T> ||
     is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
 
-// Generic product type utilities (tuple, pair, tieable structs)
+template <typename, typename = void>
+struct is_tuple_tieable : std::false_type {};
+template <typename T>
+struct is_tuple_tieable<T, std::enable_if_t<details::is_product_type_v<decltype(as_tie(std::declval<T>()))>>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_tuple_tieable_v = is_tuple_tieable<T>::value;
 
 template <typename T, typename = void>
-struct decayed_tie {
-  using type = std::decay_t<T>;
-};
+struct decayed_tie : std::decay<T> {};
 
 template <typename... Ts>
 struct decayed_tie<std::tuple<Ts...>> {
@@ -127,7 +162,6 @@ struct decayed_tie<T, std::enable_if_t<is_tieable_v<T>>> : decayed_tie<decltype(
 
 template <typename T>
 using decayed_tie_t = typename decayed_tie<T>::type;
-
 
 template <typename... Ts>
 const auto& as_tuple(const std::tuple<Ts...>& tuple) {
@@ -231,14 +265,20 @@ void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
 
 template <typename Result, typename Tuple, typename F, typename T, std::size_t... Is>
 Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
+  static_assert(std::tuple_size_v<std::decay_t<T>> == sizeof...(Is));
   return {map<std::tuple_element_t<Is, Tuple>>(std::get<Is>(std::forward<T>(t)), f)...};
 }
 
-struct DebugOverloads {
-  void operator()(std::ostream& os, const std::string& str) const { os << str; }
-  void operator()(std::ostream& os, const char* str) const { os << str; }
-  void operator()(std::ostream& os, std::string_view str) const { os << str; }
-};
+template<typename T, size_t N, typename F, size_t... Is>
+void named_visit(const T& tuple, const Names<N>& names, F f, std::index_sequence<Is...>) {
+  (f(names.members[Is], std::get<Is>(tuple)), ...);
+}
+
+template<typename T, size_t N, typename F>
+void named_visit(const T& tuple, const Names<N>& names, F f) {
+  static_assert(N == std::tuple_size_v<T>);
+  named_visit(tuple, names, f, std::make_index_sequence<N>());
+}
 
 }  // namespace details
 
@@ -363,39 +403,60 @@ std::string debug(const T& t) {
 
 template <typename T>
 std::ostream& debug(std::ostream& os, const T& t) {
-  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<details::DebugOverloads, std::ostream&, T>);
+  struct DebugOverloads {
+    void operator()(std::ostream& os, const std::string& str) const { os << str; }
+    void operator()(std::ostream& os, const char* str) const { os << str; }
+    void operator()(std::ostream& os, std::string_view str) const { os << str; }
+  };
 
-  if constexpr(std::is_invocable_v<details::DebugOverloads, std::ostream&, T>) {
-    details::DebugOverloads{}(os, t);
+  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<DebugOverloads, std::ostream&, T>);
+
+  if constexpr(std::is_invocable_v<DebugOverloads, std::ostream&, T>) {
+    DebugOverloads{}(os, t);
   } else if constexpr(std::is_same_v<T, bool>) {
     os << (t ? "true" : "false"); // special case bool due to implicit conversions
-  } else if constexpr(is_tieable_v<T>) {
+  } else if constexpr(is_tieable_v<T> && !has_names_v<T>) {
     return debug(os, as_tie(t));
+  } else if constexpr(is_tieable_v<T>) {
+    const auto t_names = names(Type<T>{});
+    if(t_names.name) {
+      os << *t_names.name;
+    }
+
+    os << '(';
+    if constexpr(details::is_tuple_tieable_v<T>) {
+      static_assert(t_names.member_count() == std::tuple_size_v<details::decayed_tie_t<T>>);
+      int i = 0;
+      details::named_visit(as_tie(t), t_names, [&](const auto& name, const auto& inner) {
+        debug(i++ == 0 ? os << name << ": " : os << ", " << name << ": ", inner);
+      });
+    } else {
+      debug(os, as_tie(t));
+    }
+    
+    os << ')';
   } else if constexpr (std::is_arithmetic_v<T>) {
     os << t;
   } else if constexpr (std::is_enum_v<T>) {
     os << static_cast<std::underlying_type_t<T>>(t);
   } else if constexpr (details::is_maybe_type_v<T>) {
     static_cast<bool>(t) ? debug(os, *t) : os << "none";
-  } else if constexpr (details::is_variant_v<T> || details::is_range_v<T> || details::is_product_type_v<T>) {
-    if constexpr (details::is_variant_v<T>)
-      os << "<";
-    else if constexpr (details::is_product_type_v<T>)
-      os << "(";
-    else
-      os << "[" << std::distance(t.begin(), t.end()) << "; ";
+  } else if constexpr (details::is_variant_v<T>) {
+    visit(t, [&](const auto& inner) { debug(os, inner); });
+  } else if constexpr (details::is_range_v<T> || details::is_product_type_v<T>) {
+    if constexpr(details::is_product_type_v<T>) {
+      os << '(';
+    } else {
+      const auto size = std::distance(std::begin(t), std::end(t));
+      os << '[' << size << "; ";
+    }
 
     int i = 0;
     visit(t, [&](const auto& inner) {
       debug(i++ == 0 ? os : os << ", ", inner);
     });
 
-    if constexpr (details::is_variant_v<T>)
-      os << ">";
-    else if constexpr (details::is_product_type_v<T>)
-      os << ")";
-    else
-      os << "]";
+    os << (details::is_product_type_v<T> ? ')' : ']');
   }
 
   return os;
@@ -554,22 +615,14 @@ Result map(T&& t, F f) {
   } else if constexpr (is_tieable_v<Result>) {
     using ResultTiedType =  details::decayed_tie_t<Result>;
     if constexpr(details::is_tuple_v<ResultTiedType>) {
-      constexpr std::size_t SrcSize = std::tuple_size_v<ResultTiedType>;
-      constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
-
-      static_assert(SrcSize == DstSize);
-
-      return details::map_tuple<Result, ResultTiedType>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
+      return details::map_tuple<Result, ResultTiedType>(std::forward<T>(t), f,
+        std::make_index_sequence<std::tuple_size_v<ResultTiedType>>());
     } else {
       return Result{map<ResultTiedType>(std::forward<T>(t), f)};
     }
   } else if constexpr (details::is_product_type_v<Result>) {
-    constexpr std::size_t SrcSize = std::tuple_size_v<Result>;
-    constexpr std::size_t DstSize = std::tuple_size_v<DecayedT>;
-
-    static_assert(SrcSize == DstSize);
-
-    return details::map_tuple<Result, Result>(std::forward<T>(t), f, std::make_index_sequence<SrcSize>());
+    return details::map_tuple<Result, Result>(std::forward<T>(t), f,
+      std::make_index_sequence<std::tuple_size_v<Result>>());
   } else if constexpr (details::is_variant_v<Result>) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit(

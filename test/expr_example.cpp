@@ -8,6 +8,10 @@ namespace {
 
 enum class Op { Add, Sub };
 
+std::ostream& debug(std::ostream& os, Op op) {
+  return os << (op == Op::Add ? "add" : "sub");
+}
+
 struct BinaryExpr;
 struct UnaryExpr;
 
@@ -17,11 +21,15 @@ struct BinaryExpr {
   Op op;
   Expr lhs;
   Expr rhs;
+
+  friend auto names(knot::Type<BinaryExpr>) { return knot::Names{"BinaryExpr", {"op", "lhs", "rhs"}}; }
 };
 
 struct UnaryExpr {
   Op op;
   Expr child;
+
+  friend auto names(knot::Type<UnaryExpr>) { return knot::Names{"UnaryExpr", {"op", "child"}}; }
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {

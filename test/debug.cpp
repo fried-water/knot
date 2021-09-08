@@ -58,13 +58,44 @@ TEST(Debug, range_types) {
 }
 
 TEST(Debug, variant) {
-  EXPECT_EQ("<5>", knot::debug(std::variant<int, Point, std::vector<std::string>>(5)));
-  EXPECT_EQ("<(45, 89)>", knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));
-  EXPECT_EQ("<[3; a, b, c]>", knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
+  EXPECT_EQ("5", knot::debug(std::variant<int, Point, std::vector<std::string>>(5)));
+  EXPECT_EQ("(45, 89)", knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));
+  EXPECT_EQ("[3; a, b, c]", knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
 }
 
 TEST(Debug, non_tuple_tieable) {
   EXPECT_EQ("5", knot::debug(IntWrapper{5}));
   EXPECT_EQ("[3; 1, 2, 3]", knot::debug(VecWrapper{{1, 2, 3}}));
-  EXPECT_EQ("<5>", knot::debug(VariantWrapper{5}));
+  EXPECT_EQ("5", knot::debug(VariantWrapper{5}));
+}
+
+namespace {
+
+struct MyNamedStruct {
+  int member1;
+  int member2;
+
+  friend auto names(knot::Type<MyNamedStruct>) {
+    return knot::Names("MyNamedStruct", {"member1", "member2"});
+  }
+};
+
+struct MyNamedAliasedStruct {
+  int value;
+
+  friend auto as_tie(const MyNamedAliasedStruct& m) { return m.value; }
+
+  friend auto names(knot::Type<MyNamedAliasedStruct>) {
+    return knot::Names("MyNamedAliasedStruct");
+  }
+};
+
+}
+
+TEST(Debug, named_struct) {
+  EXPECT_EQ("MyNamedStruct(member1: 5, member2: 3)", knot::debug(MyNamedStruct{5, 3}));
+}
+
+TEST(Debug, named_aliased_struct) {
+  EXPECT_EQ("MyNamedAliasedStruct(5)", knot::debug(MyNamedAliasedStruct{5}));
 }
