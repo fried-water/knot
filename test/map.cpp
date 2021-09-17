@@ -132,6 +132,16 @@ TEST(Map, move_only) {
   knot::map<std::variant<int, MoveOnly>>(std::variant<MoveOnly>{MoveOnly{}}, [](MoveOnly m) { return m; });
 }
 
+struct ExplicitContructor {
+  int x;
+  explicit ExplicitContructor(int x) : x(x) {}
+  friend auto as_tie(const ExplicitContructor& e) { return std::tie(e.x); }
+};
+
+TEST(Map, explicit_constructor) {
+  EXPECT_EQ(1, knot::map<ExplicitContructor>(std::tuple(1)).x);
+}
+
 TEST(Map, non_tuple_tie) {
   EXPECT_EQ(IntWrapper{5}, knot::map<IntWrapper>(5));
   EXPECT_EQ(5, knot::map<int>(IntWrapper{5}));

@@ -266,7 +266,7 @@ void visit_tuple(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
 template <typename Result, typename Tuple, typename F, typename T, std::size_t... Is>
 Result map_tuple(T&& t, F f, std::index_sequence<Is...>) {
   static_assert(std::tuple_size_v<std::decay_t<T>> == sizeof...(Is));
-  return {map<std::tuple_element_t<Is, Tuple>>(std::get<Is>(std::forward<T>(t)), f)...};
+  return Result{map<std::tuple_element_t<Is, Tuple>>(std::get<Is>(std::forward<T>(t)), f)...};
 }
 
 template<typename T, size_t N, typename F, size_t... Is>
@@ -294,8 +294,8 @@ IT serialize(const T& t, IT it) {
   if constexpr (is_tieable_v<T>) {
     return serialize(as_tie(t), it);
   } else if constexpr (details::is_primitive_type_v<T>) {
-    std::array<std::byte, sizeof(T)> array{};
-    std::memcpy(&array, &t, sizeof(T));
+    std::array<std::byte, sizeof(T)> array;
+    std::memcpy(array.data(), &t, sizeof(T));
     return std::transform(array.begin(), array.end(), it,
                           [](std::byte b) { return static_cast<details::output_it_value_t<IT>>(b); });
   } else if constexpr (details::is_variant_v<T>) {
@@ -342,7 +342,7 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
     std::transform(begin, begin + sizeof(T), array.begin(), [](auto b) { return std::byte{static_cast<uint8_t>(b)}; });
 
     T t;
-    std::memcpy(&t, &array, sizeof(T));
+    std::memcpy(&t, array.data(), sizeof(T));
 
     return std::pair<T, IT>{t, begin + sizeof(T)};
   } else if constexpr (details::is_variant_v<T>) {
@@ -475,7 +475,7 @@ std::size_t hash_value(const T& t) {
     return std::hash<T>{}(t);
   } else if constexpr (std::has_unique_object_representations_v<T>) {
     std::array<std::byte, sizeof(T)> bytes;
-    std::memcpy(bytes.begin(), &t, sizeof(T));
+    std::memcpy(bytes.data(), &t, sizeof(T));
 
     return std::accumulate(bytes.begin(), bytes.end(), static_cast<std::size_t>(0), [&](std::size_t acc, std::byte b) {
       return hash_combine(acc, static_cast<std::size_t>(b));
