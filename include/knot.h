@@ -480,7 +480,7 @@ std::size_t hash_value(const T& t) {
     return std::accumulate(bytes.begin(), bytes.end(), static_cast<std::size_t>(0), [&](std::size_t acc, std::byte b) {
       return hash_combine(acc, static_cast<std::size_t>(b));
     });
-  } else if constexpr (details::is_knot_supported_type_v<T>) { 
+  } else if constexpr (details::is_knot_supported_type_v<T>) {
     std::size_t initial_value = 0;
     if constexpr (details::is_variant_v<T>) {
       initial_value = t.index();

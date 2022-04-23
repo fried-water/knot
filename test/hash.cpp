@@ -37,8 +37,8 @@ TEST(Hash, basic_optional) {
 
   EXPECT_EQ(0, knot::hash_value(std::optional<Point>{}));
 
-  // std::nullopt and 0 value shouldnt hash to the same thing
-  EXPECT_NE(knot::hash_value(std::optional<int>{0}), knot::hash_value(std::optional<int>{}));
+  // This falls back on std hash
+  EXPECT_EQ(0, knot::hash_value(std::optional<int>{0}));
 }
 
 TEST(Hash, basic_unique_ptr) {
@@ -46,10 +46,9 @@ TEST(Hash, basic_unique_ptr) {
   const std::size_t expected_hash = std::hash<std::unique_ptr<Point>>{}(p);
   EXPECT_EQ(expected_hash, knot::hash_value(p));
 
-  EXPECT_EQ(0, knot::hash_value(std::unique_ptr<Point>()));
-
-  // std::nullptr and 0 value shouldnt hash to the same thing
-  EXPECT_NE(knot::hash_value(std::make_unique<int>(0)), knot::hash_value(std::unique_ptr<int>{}));
+  // These fall back on std hash
+  EXPECT_NE(0, knot::hash_value(std::unique_ptr<Point>()));
+  EXPECT_NE(0, knot::hash_value(std::make_unique<int>(0)));
 }
 
 TEST(Hash, basic_range) {
