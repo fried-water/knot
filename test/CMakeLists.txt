@@ -7,3 +7,5 @@ add_executable(knot_tests ${TEST_SOURCES})
 target_compile_features(knot_tests PRIVATE cxx_std_17)
 target_include_directories(knot_tests PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/lib/gtest/include)
 target_link_libraries(knot_tests PUBLIC gtest)
+
+add_test (NAME test COMMAND test/knot_tests)
