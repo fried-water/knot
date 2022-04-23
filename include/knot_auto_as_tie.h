@@ -1,5 +1,4 @@
-#ifndef KNOT_AUTO_AS_TIE
-#define KNOT_AUTO_AS_TIE
+#pragma once
 
 #include "knot_type_traits.h"
 
@@ -161,5 +160,3 @@ auto as_tie(T&& t, std::enable_if_t<std::is_aggregate_v<std::decay_t<T>>
 }
 
 }  // namespace knot
-
-#endif

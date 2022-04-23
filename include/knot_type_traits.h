@@ -1,5 +1,4 @@
-#ifndef KNOT_TYPE_TRAITS
-#define KNOT_TYPE_TRAITS
+#pragma once
 
 #include <array>
 #include <memory>
@@ -75,5 +74,3 @@ inline constexpr bool is_std_hashable_v = is_std_hashable<T>::value;
 
 }  // namespace details
 }  // namespace knot
-
-#endif

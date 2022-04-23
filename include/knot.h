@@ -1,5 +1,4 @@
-#ifndef KNOT_H
-#define KNOT_H
+#pragma once
 
 #include "knot_auto_as_tie.h"
 #include "knot_ops.h"
@@ -678,5 +677,3 @@ struct Hash {
 };
 
 }  // namespace knot
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef KNOT_VISIT_VARIANT
-#define KNOT_VISIT_VARIANT
+#pragma once
 
 #include <variant>
 
@@ -334,5 +333,3 @@ decltype(auto) visit_variant(const std::variant<Ts...>& variant, F f) {
 }
 
 }  // namespace knot
-
-#endif

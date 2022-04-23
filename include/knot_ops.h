@@ -1,5 +1,4 @@
-#ifndef KNOT_OPS
-#define KNOT_OPS
+#pragma once
 
 #define KNOT_COMPAREABLE(U)                                                               \
   template <typename KNOT_T>                                                              \
@@ -40,5 +39,3 @@
     using knot::as_tie;                                                                   \
     return as_tie(*this) >= as_tie(rhs);                                                  \
   }
-
-#endif
