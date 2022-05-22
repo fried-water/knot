@@ -326,7 +326,7 @@ std::optional<T> deserialize(IT begin, IT end) {
 template <typename Outer, typename IT>
 std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
   using T = std::remove_const_t<Outer>;
-  using it_value_t = typename IT::value_type;
+  using it_value_t = std::decay_t<decltype(*begin)>;
 
   static_assert(!std::is_reference_v<Outer>);
   static_assert(!std::is_pointer_v<T>);

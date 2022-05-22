@@ -106,6 +106,11 @@ TEST(Serialize, empty_range) {
   EXPECT_EQ(vec, knot::deserialize<std::vector<int>>(bytes.begin(), bytes.end()));
 }
 
+TEST(Serialize, ptr_iter) {
+  const std::vector<std::byte> bytes = knot::serialize(5);
+  EXPECT_EQ(5, knot::deserialize<int>(bytes.data(), bytes.data() + bytes.size()));
+}
+
 TEST(Serialize, map) {
   // maps are weird because value type has a const key: std::pair<const key, value>
   const std::map<Point, int> map{{Point{1, 1}, 5}, {Point{0, 0}, 8}};
