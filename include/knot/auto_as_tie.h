@@ -1,6 +1,6 @@
 #pragma once
 
-#include "knot_type_traits.h"
+#include "knot/type_traits.h"
 
 namespace not_knot {
 

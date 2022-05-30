@@ -1,7 +1,8 @@
-#include "gtest/gtest.h"
-
-#include "knot.h"
 #include "test_structs.h"
+
+#include "knot/core.h"
+
+#include "gtest/gtest.h"
 
 TEST(Ops, ordered) {
   Pair<int, int> p1{1, 3};

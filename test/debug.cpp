@@ -1,7 +1,8 @@
 #include "gtest/gtest.h"
 
-#include "knot.h"
 #include "test_structs.h"
+
+#include "knot/core.h"
 
 #include <map>
 #include <set>

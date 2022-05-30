@@ -1,6 +1,6 @@
-#include "gtest/gtest.h"
+#include "knot/core.h"
 
-#include "knot.h"
+#include "gtest/gtest.h"
 
 using knot::as_tie;
 using knot::is_tieable;

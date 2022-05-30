@@ -1,7 +1,8 @@
-#include "gtest/gtest.h"
-
-#include "knot.h"
 #include "test_structs.h"
+
+#include "knot/core.h"
+
+#include "gtest/gtest.h"
 
 // a variant that contains all types used in this file
 using SomeType = std::variant<int, Point, Bbox, std::optional<Point>, std::vector<Point>, std::variant<int, Point>,

@@ -1,7 +1,6 @@
-#ifndef TEST_STRUCTS
-#define TEST_STRUCTS
+#pragma once
 
-#include "knot.h"
+#include "knot/core.h"
 
 #include <map>
 #include <set>
@@ -89,5 +88,3 @@ inline BigObject example_big_object() {
 
   return obj;
 }
-
-#endif

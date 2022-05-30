@@ -1,9 +1,9 @@
 #pragma once
 
-#include "knot_auto_as_tie.h"
-#include "knot_ops.h"
-#include "knot_type_traits.h"
-#include "knot_visit_variant.h"
+#include "knot/auto_as_tie.h"
+#include "knot/operators.h"
+#include "knot/type_traits.h"
+#include "knot/visit_variant.h"
 
 #include <algorithm>
 #include <array>
