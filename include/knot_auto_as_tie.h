@@ -4,12 +4,7 @@
 
 namespace not_knot {
 
-template <typename, typename = void>
-struct is_user_tieable : std::false_type {};
-template <typename T>
-struct is_user_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_user_tieable_v = is_user_tieable<T>::value;
+constexpr inline auto is_user_tieable = knot::is_valid([](auto&& t) -> decltype(as_tie(t)) {});
 
 }
 
@@ -29,8 +24,7 @@ template <typename T, typename Seq = std::index_sequence<>, typename = void>
 struct aggregate_arity : Seq {};
 
 template <typename T, std::size_t... Is>
-struct aggregate_arity<T, std::index_sequence<Is...>,
-                       std::void_t<decltype(T{filler{}, (Is, filler{})...})>>
+struct aggregate_arity<T, std::index_sequence<Is...>, std::void_t<decltype(T{filler{}, (Is, filler{})...})>>
     : aggregate_arity<T, std::index_sequence<Is..., sizeof...(Is)>> {};
 
 template <typename T>
@@ -65,9 +59,9 @@ constexpr decltype(auto) aliasing_forward(U&& obj) noexcept {
 // This auto generates as_tie() for aggregate structs with no base classes
 template <typename T>
 auto as_tie(T&& t, std::enable_if_t<std::is_aggregate_v<std::decay_t<T>>
-                                && !not_knot::is_user_tieable_v<T>
-                                && !details::is_array_v<std::decay_t<T>> 
-                                && !details::has_any_base<std::decay_t<T>>::value 
+                                && !not_knot::is_user_tieable(decay(Type<T>{}))
+                                && !is_array(decay(Type<T>{}))
+                                && !details::has_any_base<std::decay_t<T>>::value
                                 && details::arity<std::decay_t<T>>() <= 16,
                                     int> = 0) {
   constexpr std::size_t my_arity = details::arity<std::decay_t<T>>();

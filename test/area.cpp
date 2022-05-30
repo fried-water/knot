@@ -24,16 +24,16 @@ struct Combo {
 };
 
 struct TriviallyDestructibleUntieable {
-  TriviallyDestructibleUntieable(){} // no longer an aggregate
+  TriviallyDestructibleUntieable() {}  // no longer an aggregate
 };
-static_assert(!knot::is_tieable_v<TriviallyDestructibleUntieable>);
+static_assert(!knot::is_tieable(knot::Type<TriviallyDestructibleUntieable>{}));
 static_assert(std::is_trivially_destructible_v<TriviallyDestructibleUntieable>);
 
 struct MemoryWrapper {
   friend auto as_tie(MemoryWrapper) { return Memory(5); }
 };
 
-}
+}  // namespace
 
 TEST(Area, primitive) {
   EXPECT_EQ(0, knot::area(5));

@@ -8,69 +8,179 @@
 #include <variant>
 
 namespace knot {
-namespace details {
 
-template <typename>
-inline constexpr bool is_array_v = false;
+template <typename T>
+struct Type {
+  using type = T;
+};
+
+template <typename T1, typename T2>
+constexpr bool operator==(Type<T1>, Type<T2>) {
+  return std::is_same_v<T1, T2>;
+}
+
+template <typename T1, typename T2>
+constexpr bool operator!=(Type<T1> t1, Type<T2> t2) {
+  return !(t1 == t2);
+}
+
+template <typename T>
+using type_t = typename T::type;
+
+template <typename... Ts>
+struct TypeList {};
+
+template <typename... Ts>
+constexpr auto typelist(Type<Ts>...) {
+  return TypeList<Ts...>{};
+}
+
+template <typename... Ts>
+constexpr size_t size(TypeList<Ts...>) {
+  return sizeof...(Ts);
+}
+
+template <typename T, typename... Ts>
+constexpr auto head(TypeList<T, Ts...>) {
+  return Type<T>{};
+}
+
+template <typename T, typename... Ts>
+constexpr auto tail(TypeList<T, Ts...>) {
+  return TypeList<Ts...>{};
+}
+
+template <typename... Ts, typename F>
+constexpr auto map(TypeList<Ts...>, F f) {
+  return typelist(f(Type<Ts>{})...);
+}
+
+template <typename... Ts>
+constexpr auto as_tuple(TypeList<Ts...>) {
+  return Type<std::tuple<Ts...>>{};
+}
+
+template <typename... Ts>
+constexpr auto as_typelist(Type<std::tuple<Ts...>>) {
+  return TypeList<Ts...>{};
+}
+
+template <typename T>
+constexpr bool is_enum(Type<T>) {
+  return std::is_enum_v<T>;
+}
+
+template <typename T>
+constexpr bool is_arithmetic(Type<T>) {
+  return std::is_arithmetic_v<T>;
+}
+
+template <typename T>
+constexpr bool is_array(Type<T>) {
+  return false;
+}
 
 template <typename T, std::size_t N>
-inline constexpr bool is_array_v<std::array<T, N>> = true;
-
-template <typename>
-inline constexpr bool is_optional_v = false;
-template <typename T>
-inline constexpr bool is_optional_v<std::optional<T>> = true;
+constexpr bool is_array(Type<std::array<T, N>>) {
+  return true;
+}
 
 template <typename T>
-inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
-template <typename T, typename Del>
-inline constexpr bool is_pointer_v<std::unique_ptr<T, Del>> = true;
-template <typename T>
-inline constexpr bool is_pointer_v<std::shared_ptr<T>> = true;
+constexpr bool is_optional(Type<T>) {
+  return false;
+}
 
-template <typename>
-inline constexpr bool is_tuple_v = false;
+template <typename T>
+constexpr bool is_optional(Type<std::optional<T>>) {
+  return true;
+}
+
+template <typename T>
+constexpr bool is_raw_pointer(Type<T>) {
+  return std::is_pointer_v<T>;
+}
+
+template <typename T>
+constexpr bool is_pointer(Type<T> t) {
+  return is_raw_pointer(t);
+}
+
+template <typename T, typename D>
+constexpr bool is_pointer(Type<std::unique_ptr<T, D>>) {
+  return true;
+}
+
+template <typename T>
+constexpr bool is_pointer(Type<std::shared_ptr<T>>) {
+  return true;
+}
+
+template <typename T>
+constexpr bool is_tuple(Type<T>) {
+  return false;
+}
+
 template <typename... Ts>
-inline constexpr bool is_tuple_v<std::tuple<Ts...>> = true;
+constexpr bool is_tuple(Type<std::tuple<Ts...>>) {
+  return true;
+}
 
-template <typename>
-inline constexpr bool is_variant_v = false;
 template <typename... Ts>
-inline constexpr bool is_variant_v<std::variant<Ts...>> = true;
-
-template <typename, typename = void>
-struct is_range : std::false_type {};
-template <typename T>
-struct is_range<T, std::void_t<decltype(std::begin(std::declval<T>())), decltype(std::end(std::declval<T>()))>>
-    : std::true_type {};
+constexpr size_t size(Type<std::tuple<Ts...>>) {
+  return sizeof...(Ts);
+}
 
 template <typename T>
-inline constexpr bool is_range_v = is_range<T>::value;
+constexpr bool is_variant(Type<T>) {
+  return false;
+}
 
-template <typename, typename = void>
-struct is_reserveable : std::false_type {};
-template <typename T>
-struct is_reserveable<T, std::void_t<decltype(std::declval<T>().reserve(0))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_reserveable_v = is_reserveable<T>::value;
+template <typename... Ts>
+constexpr bool is_variant(Type<std::variant<Ts...>>) {
+  return true;
+}
 
-template <typename T, typename Enable = void>
-struct output_it_value {
-  using type = uint8_t;
+template <typename T>
+constexpr auto decay(Type<T>) {
+  return Type<std::decay_t<T>>{};
+}
+
+template <typename T>
+constexpr bool is_decayed(Type<T> t) {
+  return t == decay(t);
+}
+
+template <typename T>
+constexpr bool is_ref(Type<T>) {
+  return std::is_reference_v<T>;
+}
+
+namespace details {
+
+template <typename F, typename... Ts>
+struct is_valid_helper {
+  template <typename U, typename... Args>
+  static decltype(std::declval<U>()(std::declval<Ts>()...), std::true_type{}) f(std::remove_reference_t<U>*);
+
+  template <typename U, typename... Args>
+  static std::false_type f(...);
+
+  static constexpr bool value = decltype(f<F, Ts...>(nullptr))::value;
 };
-template <typename T>
-struct output_it_value<T, std::void_t<decltype(*std::declval<T>() = std::byte{})>> {
-  using type = std::byte;
-};
-template <typename T>
-using output_it_value_t = typename output_it_value<T>::type;
 
-template <typename, typename = void>
-struct is_std_hashable : std::false_type {};
-template <typename T>
-struct is_std_hashable<T, std::void_t<decltype(std::hash<T>{}(std::declval<T>()))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_std_hashable_v = is_std_hashable<T>::value;
+template <typename F, typename... Ts>
+struct is_valid_helper<F, Type<Ts>...> : is_valid_helper<F, Ts...> {};
 
 }  // namespace details
+
+template <typename F>
+constexpr auto is_valid(F) {
+  return [](auto... ts) { return details::is_valid_helper<F, decltype(ts)...>::value; };
+}
+
+template <typename T>
+constexpr bool is_range(Type<T> t) {
+  return is_valid([](auto&& t) -> decltype(t.begin()) {})(t) && is_valid([](auto&& t) -> decltype(t.end()) {})(t);
+}
+
 }  // namespace knot

@@ -84,14 +84,17 @@ auto as_tie(std::pair<First, Second>&& pair) {
   return std::forward_as_tuple(std::move(pair.first), std::move(pair.second));
 }
 
-template <typename, typename = void>
-struct is_tieable : std::false_type {};
-template <typename T>
-struct is_tieable<T, std::void_t<decltype(as_tie(std::declval<T>()))>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_tieable_v = is_tieable<T>::value;
+constexpr inline auto is_tieable = is_valid([](auto&& t) -> decltype(as_tie(t)) {});
 
-template <typename T> struct Type { using type = T; };
+template <typename T>
+constexpr auto tie_type(Type<T>) {
+  constexpr auto tie = decay(Type<decltype(as_tie(std::declval<T>()))>{});
+  if constexpr (is_tuple(tie)) {
+    return as_tuple(map(as_typelist(tie), [](auto t) { return decay(t); }));
+  } else {
+    return tie;
+  }
+}
 
 template<size_t N>
 struct Names {
@@ -116,76 +119,49 @@ struct Names {
 
 Names(std::string_view) -> Names<0>;
 
-template <typename, typename = void>
-struct has_names : std::false_type {};
+constexpr inline auto has_names = is_valid([](auto&& t) -> decltype(names(decay(Type<decltype(t)>{}))) {});
+constexpr inline auto is_reserveable = is_valid([](auto&& t) -> decltype(t.reserve(0)) {});
+
+enum class TypeCategory { Unknown, Primative, Range, Product, Sum, Maybe };
+
 template <typename T>
-struct has_names<T, std::void_t<decltype(names(Type<T>{}))>> : std::true_type {};
+constexpr TypeCategory category(Type<T> t) {
+  if constexpr (is_tieable(t)) {
+    return category(tie_type(t));
+  } else if constexpr (is_enum(t) || is_arithmetic(t)) {
+    return TypeCategory::Primative;
+  } else if constexpr (is_range(t)) {
+    return TypeCategory::Range;
+  } else if constexpr (is_tuple(t)) {
+    return TypeCategory::Product;
+  } else if constexpr (is_variant(t)) {
+    return TypeCategory::Sum;
+  } else if constexpr (is_optional(t) || is_pointer(t)) {
+    return TypeCategory::Maybe;
+  } else {
+    return TypeCategory::Unknown;
+  }
+}
+
 template <typename T>
-inline constexpr bool has_names_v = has_names<T>::value;
+constexpr bool is_supported(Type<T> t) {
+  return category(t) != TypeCategory::Unknown;
+}
 
 namespace details {
 
-// We treat tuples, pairs, and tieable structs as product types
 template <typename T>
-inline constexpr bool is_product_type_v = is_tuple_v<T>;
-
-// We treat optionals, and ptrs as maybe types
-template <typename T>
-inline constexpr bool is_maybe_type_v = is_optional_v<T> || is_pointer_v<T>;
-
-template <typename T>
-inline constexpr bool is_primitive_type_v = std::is_arithmetic_v<T> || std::is_enum_v<T>;
-
-template <typename T>
-inline constexpr bool is_knot_supported_type_v =
-    is_tieable_v<T> || is_product_type_v<T> || is_variant_v<T> ||
-    is_maybe_type_v<T> || is_range_v<T> || is_primitive_type_v<T>;
-
-template <typename, typename = void>
-struct is_tuple_tieable : std::false_type {};
-template <typename T>
-struct is_tuple_tieable<T, std::enable_if_t<details::is_product_type_v<decltype(as_tie(std::declval<T>()))>>> : std::true_type {};
-template <typename T>
-inline constexpr bool is_tuple_tieable_v = is_tuple_tieable<T>::value;
-
-template <typename T, typename = void>
-struct decayed_tie : std::decay<T> {};
-
-template <typename... Ts>
-struct decayed_tie<std::tuple<Ts...>> {
-  using type = std::tuple<std::decay_t<Ts>...>;
-};
-
-template <typename T>
-struct decayed_tie<T, std::enable_if_t<is_tieable_v<T>>> : decayed_tie<decltype(as_tie(std::declval<T>()))> {};
-
-template <typename T>
-using decayed_tie_t = typename decayed_tie<T>::type;
-
-template <typename... Ts>
-const auto& as_tuple(const std::tuple<Ts...>& tuple) {
-  return tuple;
-}
-
-template <typename... Ts>
-std::tuple<Ts...>&& as_tuple(std::tuple<Ts...>&& tuple) {
-  return std::move(tuple);
-}
-
-template <typename T>
-auto as_tuple(T&& tieable) {
-  return as_tie(std::forward<T>(tieable));
-}
+using decayed_tie_t = typename decltype(tie_type(Type<T>{}))::type;
 
 // Generic maybe type utilities (optional, pointers)
 
 template <typename Result>
-std::enable_if_t<is_optional_v<Result>, Result> from_optional(Result&& op) {
+std::enable_if_t<is_optional(Type<Result>{}), Result> from_optional(Result&& op) {
   return std::move(op);
 }
 
 template <typename Result, typename T>
-std::enable_if_t<is_pointer_v<Result>, Result> from_optional(std::optional<T>&& op) {
+std::enable_if_t<is_pointer(Type<Result>{}), Result> from_optional(std::optional<T>&& op) {
   return Result{static_cast<bool>(op) ? new T{std::move(*op)} : nullptr};
 }
 
@@ -290,26 +266,34 @@ std::vector<std::byte> serialize(const T& t) {
 
 template <typename T, typename IT>
 IT serialize(const T& t, IT it) {
-  if constexpr (is_tieable_v<T>) {
+  constexpr Type<T> type = {};
+
+  static_assert(is_supported(type), "Unsupported type in serialize");
+
+  if constexpr (is_tieable(type)) {
     return serialize(as_tie(t), it);
-  } else if constexpr (details::is_primitive_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Primative) {
     std::array<std::byte, sizeof(T)> array;
     std::memcpy(array.data(), &t, sizeof(T));
-    return std::transform(array.begin(), array.end(), it,
-                          [](std::byte b) { return static_cast<details::output_it_value_t<IT>>(b); });
-  } else if constexpr (details::is_variant_v<T>) {
+    return std::transform(array.begin(), array.end(), it, [](std::byte b) {
+      if constexpr (is_valid([](auto&& it) -> decltype(*it = std::byte{}) {})(Type<IT>{})) {
+        return b;
+      } else {
+        return static_cast<uint8_t>(b);
+      }
+    });
+  } else if constexpr (category(type) == TypeCategory::Sum) {
     return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
       serialize(t.index(), it));
-  } else if constexpr (details::is_maybe_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Maybe) {
     return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
       serialize(static_cast<bool>(t), it));
-  } else if constexpr (details::is_range_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Range) {
     return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); },
       serialize(t.size(), it));
-  } else if constexpr (details::is_product_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Product) {
     return accumulate<IT>(t, [&](IT it, const auto& ele) { return serialize(ele, it); }, it);
-  }else {
-    static_assert(!std::is_same_v<T, T>, "Unsupported type in serialize");
+  } else {
     return it;
   }
 }
@@ -326,15 +310,17 @@ std::optional<T> deserialize(IT begin, IT end) {
 template <typename Outer, typename IT>
 std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
   using T = std::remove_const_t<Outer>;
-  using it_value_t = std::decay_t<decltype(*begin)>;
 
-  static_assert(!std::is_reference_v<Outer>);
-  static_assert(!std::is_pointer_v<T>);
-  static_assert(std::is_same_v<it_value_t, uint8_t> || std::is_same_v<it_value_t, int8_t> ||
-                std::is_same_v<it_value_t, std::byte>);
-  static_assert(details::is_knot_supported_type_v<T>);
+  constexpr Type<T> type = {};
+  constexpr auto it_type = decay(Type<decltype(*begin)>{});
 
-  if constexpr (details::is_primitive_type_v<T>) {
+  static_assert(is_supported(type) && !is_ref(type) && !is_raw_pointer(type));
+  static_assert(it_type == Type<uint8_t>{} || it_type == Type<int8_t>{} || it_type == Type<std::byte>{});
+
+  if constexpr (is_tieable(type)) {
+    return details::make_monad(deserialize_partial<details::decayed_tie_t<T>>(begin, end))
+        .map([](auto tied_type, IT begin) { return std::pair(map<T>(std::move(tied_type)), begin); });
+  } else if constexpr (category(type) == TypeCategory::Primative) {
     if (std::distance(begin, end) < sizeof(T)) return std::nullopt;
 
     std::array<std::byte, sizeof(T)> array;
@@ -344,19 +330,18 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
     std::memcpy(&t, array.data(), sizeof(T));
 
     return std::pair<T, IT>{t, begin + sizeof(T)};
-  } else if constexpr (details::is_variant_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Sum) {
     return details::make_monad(deserialize_partial<std::size_t>(begin, end))
         .and_then([end](std::size_t index, IT begin) {
           return details::variant_deserialize<T>(begin, end, index, std::make_index_sequence<std::variant_size_v<T>>());
         });
-  } else if constexpr (details::is_maybe_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Maybe) {
     using optional_t = std::optional<std::decay_t<decltype(*std::declval<T>())>>;
     return details::make_monad(deserialize_partial<bool>(begin, end))
         .and_then([end](bool has_value, IT begin) -> std::optional<std::pair<optional_t, IT>> {
           if (has_value) {
             return details::make_monad(deserialize_partial<typename optional_t::value_type>(begin, end))
-                .map(
-                    [](auto&& inner, IT begin) { return std::pair(std::make_optional(std::move(inner)), begin); });
+                .map([](auto&& inner, IT begin) { return std::pair(std::make_optional(std::move(inner)), begin); });
           } else {
             return std::pair(std::nullopt, begin);
           }
@@ -364,16 +349,16 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
         .map([](optional_t&& optional, IT begin) {
           return std::pair(details::from_optional<T>(std::move(optional)), begin);
         });
-  } else if constexpr (details::is_range_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Range) {
     return details::make_monad(deserialize_partial<std::size_t>(begin, end))
-        .map([end](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
+        .map([&](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
           T range{};
-          if constexpr (details::is_reserveable_v<T>) range.reserve(size);
+          if constexpr (is_reserveable(type)) range.reserve(size);
 
           for (std::size_t i = 0; i < size; i++) {
             auto ele_opt = deserialize_partial<typename T::value_type>(begin, end);
             if (!ele_opt) return std::nullopt;
-            if constexpr (details::is_array_v<T>) {
+            if constexpr (is_array(type)) {
               range[i] = std::move(ele_opt->first);
             } else {
               range.insert(range.end(), std::move(ele_opt->first));
@@ -383,11 +368,8 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(IT begin, IT end) {
 
           return std::pair<T, IT>{std::move(range), begin};
         });
-  } else if constexpr (details::is_product_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Product) {
     return details::tuple_deserialize<T>(begin, end);
-  } else if constexpr (is_tieable_v<T>) {
-    return details::make_monad(deserialize_partial<details::decayed_tie_t<T>>(begin, end))
-        .map([](auto tied_type, IT begin) { return std::pair(map<T>(std::move(tied_type)), begin); });
   } else {
     return std::nullopt;
   }
@@ -408,23 +390,25 @@ std::ostream& debug(std::ostream& os, const T& t) {
     void operator()(std::ostream& os, std::string_view str) const { os << str; }
   };
 
-  static_assert(details::is_knot_supported_type_v<T> || std::is_invocable_v<DebugOverloads, std::ostream&, T>);
+  constexpr Type<T> type = {};
 
-  if constexpr(std::is_invocable_v<DebugOverloads, std::ostream&, T>) {
+  static_assert(is_supported(type) || std::is_invocable_v<DebugOverloads, std::ostream&, T>);
+
+  if constexpr (std::is_invocable_v<DebugOverloads, std::ostream&, T>) {
     DebugOverloads{}(os, t);
-  } else if constexpr(std::is_same_v<T, bool>) {
+  } else if constexpr (type == Type<bool>{}) {
     os << (t ? "true" : "false"); // special case bool due to implicit conversions
-  } else if constexpr(is_tieable_v<T> && !has_names_v<T>) {
+  } else if constexpr (is_tieable(type) && !has_names(type)) {
     return debug(os, as_tie(t));
-  } else if constexpr(is_tieable_v<T>) {
-    const auto t_names = names(Type<T>{});
-    if(t_names.name) {
+  } else if constexpr (is_tieable(type)) {
+    const auto t_names = names(type);
+    if (t_names.name) {
       os << *t_names.name;
     }
 
     os << '(';
-    if constexpr(details::is_tuple_tieable_v<T>) {
-      static_assert(t_names.member_count() == std::tuple_size_v<details::decayed_tie_t<T>>);
+    if constexpr (is_tuple(tie_type(type))) {
+      static_assert(t_names.member_count() == size(tie_type(type)));
       int i = 0;
       details::named_visit(as_tie(t), t_names, [&](const auto& name, const auto& inner) {
         debug(i++ == 0 ? os << name << ": " : os << ", " << name << ": ", inner);
@@ -432,18 +416,18 @@ std::ostream& debug(std::ostream& os, const T& t) {
     } else {
       debug(os, as_tie(t));
     }
-    
+
     os << ')';
-  } else if constexpr (std::is_arithmetic_v<T>) {
+  } else if constexpr (is_arithmetic(type)) {
     os << t;
-  } else if constexpr (std::is_enum_v<T>) {
+  } else if constexpr (is_enum(type)) {
     os << static_cast<std::underlying_type_t<T>>(t);
-  } else if constexpr (details::is_maybe_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Maybe) {
     static_cast<bool>(t) ? debug(os, *t) : os << "none";
-  } else if constexpr (details::is_variant_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Sum) {
     visit(t, [&](const auto& inner) { debug(os, inner); });
-  } else if constexpr (details::is_range_v<T> || details::is_product_type_v<T>) {
-    if constexpr(details::is_product_type_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Range || category(type) == TypeCategory::Product) {
+    if constexpr (category(type) == TypeCategory::Product) {
       os << '(';
     } else {
       const auto size = std::distance(std::begin(t), std::end(t));
@@ -455,7 +439,7 @@ std::ostream& debug(std::ostream& os, const T& t) {
       debug(i++ == 0 ? os : os << ", ", inner);
     });
 
-    os << (details::is_product_type_v<T> ? ')' : ']');
+    os << (category(type) == TypeCategory::Product ? ')' : ']');
   }
 
   return os;
@@ -468,9 +452,13 @@ std::size_t hash_value(const T& t) {
     return seed ^ (hash + 0x9e3779b9 + (seed << 6) + (seed >> 2));
   };
 
-  if constexpr (is_tieable_v<T>) {
+  constexpr Type<T> type = {};
+
+  static_assert(is_supported(type) || std::has_unique_object_representations_v<T>, "Unsupported type in hash");
+
+  if constexpr (is_tieable(type)) {
     return hash_value(as_tie(t));
-  } else if constexpr (details::is_std_hashable_v<T>) {
+  } else if constexpr (is_valid([](auto&& t) -> decltype(std::hash<T>{}(t)) {})(type)) {
     return std::hash<T>{}(t);
   } else if constexpr (std::has_unique_object_representations_v<T>) {
     std::array<std::byte, sizeof(T)> bytes;
@@ -479,19 +467,18 @@ std::size_t hash_value(const T& t) {
     return std::accumulate(bytes.begin(), bytes.end(), static_cast<std::size_t>(0), [&](std::size_t acc, std::byte b) {
       return hash_combine(acc, static_cast<std::size_t>(b));
     });
-  } else if constexpr (details::is_knot_supported_type_v<T>) {
+  } else if constexpr (is_supported(type)) {
     std::size_t initial_value = 0;
-    if constexpr (details::is_variant_v<T>) {
+    if constexpr (category(type) == TypeCategory::Sum) {
       initial_value = t.index();
-    } else if constexpr (details::is_maybe_type_v<T>) {
+    } else if constexpr (category(type) == TypeCategory::Maybe) {
       initial_value = static_cast<std::size_t>(static_cast<bool>(t));
     }
 
-    return accumulate<std::size_t>(t, 
+    return accumulate<std::size_t>(t,
       [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); },
       initial_value);
   } else {
-    static_assert(!std::is_same_v<T, T>, "Unsupported type in hash");
     return 0;
   }
 }
@@ -504,11 +491,13 @@ std::size_t area(const std::unique_ptr<T>&);
 
 template <typename T>
 std::size_t area(const T& t) {
-  static_assert(details::is_knot_supported_type_v<T> || std::is_trivially_destructible_v<T>, "Unsupported type in area()");
+  constexpr Type<T> type = {};
 
-  if constexpr (is_tieable_v<T>) {
+  static_assert(is_supported(type) || std::is_trivially_destructible_v<T>, "Unsupported type in area()");
+
+  if constexpr (is_tieable(type)) {
     return area(as_tie(t));
-  } else if constexpr (details::is_knot_supported_type_v<T>) {
+  } else if constexpr (is_supported(type)) {
     return accumulate<std::size_t>(t, [](std::size_t acc, const auto& ele) { return acc + area(ele); });
   } else if constexpr (std::is_trivially_destructible_v<T>) {
     return 0;
@@ -528,21 +517,23 @@ std::size_t area(const std::unique_ptr<T>& ptr) {
 
 template <typename T, typename Visitor>
 void visit(const T& t, Visitor visitor) {
+  constexpr Type<T> type = {};
+
   const auto try_visit = [&](const auto& val) {
     if constexpr (std::is_invocable_v<Visitor, decltype(val)>) {
       visitor(val);
     }
   };
 
-  if constexpr (is_tieable_v<T>) {
+  if constexpr (is_tieable(type)) {
     knot::visit(as_tie(t), visitor);
-  } else if constexpr (details::is_tuple_v<T>) {
+  } else if constexpr (is_tuple(type)) {
     details::visit_tuple(t, try_visit, std::make_index_sequence<std::tuple_size_v<T>>());
-  } else if constexpr (details::is_variant_v<T>) {
+  } else if constexpr (is_variant(type)) {
     knot::visit_variant(t, try_visit);
-  } else if constexpr (details::is_maybe_type_v<T>) {
+  } else if constexpr (is_pointer(type) || is_optional(type)) {
     if (static_cast<bool>(t)) try_visit(*t);
-  } else if constexpr (details::is_range_v<T>) {
+  } else if constexpr (category(type) == TypeCategory::Range) {
     for (const auto& val : t) try_visit(val);
   }
 }
@@ -590,39 +581,35 @@ void postorder(const T& t, Visitor visitor) {
 
 template <typename Result, typename T, typename F>
 Result map(T&& t, F f) {
-  using DecayedT = std::decay_t<T>;
+  constexpr auto type = decay(Type<T>{});
+  constexpr Type<Result> result_type = {};
 
   // Type category needs to align
-  static_assert(std::is_invocable_r_v<Result, F, DecayedT> || is_tieable_v<Result> || is_tieable_v<DecayedT> ||
-                (details::is_primitive_type_v<Result> == details::is_primitive_type_v<DecayedT> &&
-                 details::is_product_type_v<Result> == details::is_product_type_v<DecayedT> &&
-                 details::is_variant_v<Result> == details::is_variant_v<DecayedT> &&
-                 details::is_maybe_type_v<Result> == details::is_maybe_type_v<DecayedT> &&
-                 details::is_range_v<Result> == details::is_range_v<DecayedT>));
+  static_assert(std::is_invocable_r_v<Result, F, std::decay_t<T>> || category(result_type) == category(type));
 
   // Not mapping to raw pointers
   static_assert(!std::is_pointer_v<Result>);
 
-  if constexpr (std::is_invocable_r_v<Result, F, DecayedT>) {
+  if constexpr (std::is_invocable_r_v<Result, F, std::decay_t<T>>) {
     return f(std::forward<T>(t));
-  } else if constexpr (std::is_same_v<Result, DecayedT>) {
+  } else if constexpr (type == result_type) {
     return std::forward<T>(t);
-  } else if constexpr (is_tieable_v<DecayedT>) {
+  } else if constexpr (is_tieable(type)) {
     return map<Result>(as_tie(std::forward<T>(t)), f);
-  } else if constexpr (details::is_primitive_type_v<Result>) {
-    return static_cast<Result>(t);
-  } else if constexpr (is_tieable_v<Result>) {
-    using ResultTiedType =  details::decayed_tie_t<Result>;
-    if constexpr(details::is_tuple_v<ResultTiedType>) {
+  } else if constexpr (is_tieable(result_type)) {
+    using ResultTiedType = details::decayed_tie_t<Result>;
+    if constexpr (is_tuple(Type<ResultTiedType>{})) {
       return details::map_tuple<Result, ResultTiedType>(std::forward<T>(t), f,
         std::make_index_sequence<std::tuple_size_v<ResultTiedType>>());
     } else {
       return Result{map<ResultTiedType>(std::forward<T>(t), f)};
     }
-  } else if constexpr (details::is_product_type_v<Result>) {
+  } else if constexpr (category(result_type) == TypeCategory::Primative) {
+    return static_cast<Result>(t);
+  } else if constexpr (category(result_type) == TypeCategory::Product) {
     return details::map_tuple<Result, Result>(std::forward<T>(t), f,
       std::make_index_sequence<std::tuple_size_v<Result>>());
-  } else if constexpr (details::is_variant_v<Result>) {
+  } else if constexpr (category(result_type) == TypeCategory::Sum) {
     // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit(
         [&](auto&& val) -> Result {
@@ -633,22 +620,22 @@ Result map(T&& t, F f) {
           }
         },
         std::forward<T>(t));
-  } else if constexpr (details::is_pointer_v<Result>) {
+  } else if constexpr (is_pointer(result_type)) {
     using ElementT = typename Result::element_type;
     return t ? Result{new ElementT{map<ElementT>(*std::forward<T>(t), f)}} : nullptr;
-  } else if constexpr (details::is_optional_v<Result>) {
+  } else if constexpr (is_optional(result_type)) {
     return t ? Result{map<typename Result::value_type>(*std::forward<T>(t), f)} : std::nullopt;
-  } else if constexpr (details::is_range_v<Result>) {
+  } else if constexpr (category(result_type) == TypeCategory::Range) {
     Result range{};
-    if constexpr (details::is_reserveable_v<Result>) range.reserve(std::distance(std::begin(t), std::end(t)));
+    if constexpr (is_reserveable(result_type)) range.reserve(std::distance(std::begin(t), std::end(t)));
 
     using DstType = typename Result::value_type;
 
     int i = 0;
     // TODO bound check result arrays
-    if constexpr (std::is_reference_v<T>) {
+    if constexpr (is_ref(Type<T>{})) {
       for (const auto& val : t) {
-        if constexpr (details::is_array_v<Result>) {
+        if constexpr (is_array(result_type)) {
           range[i++] = map<DstType>(val, f);
         } else {
           range.insert(range.end(), map<DstType>(val, f));
@@ -656,7 +643,7 @@ Result map(T&& t, F f) {
       }
     } else {
       for (auto&& val : t) {
-        if constexpr (details::is_array_v<Result>) {
+        if constexpr (is_array(result_type)) {
           range[i++] = map<DstType>(std::move(val), f);
         } else {
           range.insert(range.end(), map<DstType>(std::move(val), f));

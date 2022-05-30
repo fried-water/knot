@@ -3,38 +3,39 @@
 #include "knot.h"
 
 using knot::as_tie;
-using knot::is_tieable_v;
+using knot::is_tieable;
+using knot::Type;
 
 namespace {
 
 struct Empty {};
-static_assert(is_tieable_v<Empty>);
+static_assert(is_tieable(Type<Empty>{}));
 
 struct Derived : Empty {};
-static_assert(!is_tieable_v<Derived>);
+static_assert(!is_tieable(Type<Derived>{}));
 
 struct Virtual {
   virtual int foo() = 0;
 };
-static_assert(!is_tieable_v<Virtual>);
+static_assert(!is_tieable(Type<Virtual>{}));
 
 struct FewMembers {
   int x;
   float y;
 };
-static_assert(is_tieable_v<FewMembers>);
+static_assert(is_tieable(Type<FewMembers>{}));
 
 struct OptionalMember {
   std::optional<int> opt;
 };
-static_assert(is_tieable_v<OptionalMember>);
+static_assert(is_tieable(Type<OptionalMember>{}));
 
 struct Compound {
   FewMembers f;
   Empty e;
   OptionalMember o;
 };
-static_assert(is_tieable_v<Compound>);
+static_assert(is_tieable(Type<Compound>{}));
 
 struct MemberFns {
   int x;
@@ -42,13 +43,13 @@ struct MemberFns {
   float do_stuff();
   int get_stuff() const;
 };
-static_assert(is_tieable_v<MemberFns>);
+static_assert(is_tieable(Type<MemberFns>{}));
 
 struct ForwardTest {
   std::unique_ptr<int> ptr;
   float x;
 };
-static_assert(is_tieable_v<MemberFns>);
+static_assert(is_tieable(Type<MemberFns>{}));
 
 }  // namespace
 
