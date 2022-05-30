@@ -56,6 +56,11 @@ constexpr auto map(TypeList<Ts...>, F f) {
 }
 
 template <typename... Ts>
+constexpr auto idx_seq(TypeList<Ts...>) {
+  return std::make_index_sequence<sizeof...(Ts)>{};
+}
+
+template <typename... Ts>
 constexpr auto as_tuple(TypeList<Ts...>) {
   return Type<std::tuple<Ts...>>{};
 }
@@ -126,8 +131,8 @@ constexpr bool is_tuple(Type<std::tuple<Ts...>>) {
 }
 
 template <typename... Ts>
-constexpr size_t size(Type<std::tuple<Ts...>>) {
-  return sizeof...(Ts);
+constexpr auto idx_seq(Type<std::tuple<Ts...>>) {
+  return std::make_index_sequence<sizeof...(Ts)>{};
 }
 
 template <typename T>
