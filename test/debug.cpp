@@ -1,8 +1,8 @@
-#include "gtest/gtest.h"
+#include "knot/debug.h"
 
 #include "test_structs.h"
 
-#include "knot/core.h"
+#include "gtest/gtest.h"
 
 #include <map>
 #include <set>
@@ -53,7 +53,7 @@ TEST(Debug, range_types) {
 
   EXPECT_EQ("[0; ]", knot::debug(std::map<int, std::string>{}));
   EXPECT_EQ("[1; (1, a)]", knot::debug(std::map<int, std::string>{{1, "a"}}));
-  EXPECT_EQ("[3; (1, a), (2, b), (3, c)]", knot::debug(std::map<int, std::string>{{3, "c"} , {2 , "b"}, {1, "a"}}));
+  EXPECT_EQ("[3; (1, a), (2, b), (3, c)]", knot::debug(std::map<int, std::string>{{3, "c"}, {2, "b"}, {1, "a"}}));
 
   // Skipping unordered containers since order won't be consistent across platforms
 }
@@ -61,7 +61,8 @@ TEST(Debug, range_types) {
 TEST(Debug, variant) {
   EXPECT_EQ("5", knot::debug(std::variant<int, Point, std::vector<std::string>>(5)));
   EXPECT_EQ("(45, 89)", knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));
-  EXPECT_EQ("[3; a, b, c]", knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
+  EXPECT_EQ("[3; a, b, c]",
+            knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
 }
 
 TEST(Debug, non_tuple_tieable) {
@@ -76,9 +77,7 @@ struct MyNamedStruct {
   int member1;
   int member2;
 
-  friend auto names(knot::Type<MyNamedStruct>) {
-    return knot::Names("MyNamedStruct", {"member1", "member2"});
-  }
+  friend auto names(knot::Type<MyNamedStruct>) { return knot::Names("MyNamedStruct", {"member1", "member2"}); }
 };
 
 struct MyNamedAliasedStruct {
@@ -86,17 +85,11 @@ struct MyNamedAliasedStruct {
 
   friend auto as_tie(const MyNamedAliasedStruct& m) { return m.value; }
 
-  friend auto names(knot::Type<MyNamedAliasedStruct>) {
-    return knot::Names("MyNamedAliasedStruct");
-  }
+  friend auto names(knot::Type<MyNamedAliasedStruct>) { return knot::Names("MyNamedAliasedStruct"); }
 };
 
-}
+}  // namespace
 
-TEST(Debug, named_struct) {
-  EXPECT_EQ("MyNamedStruct(member1: 5, member2: 3)", knot::debug(MyNamedStruct{5, 3}));
-}
+TEST(Debug, named_struct) { EXPECT_EQ("MyNamedStruct(member1: 5, member2: 3)", knot::debug(MyNamedStruct{5, 3})); }
 
-TEST(Debug, named_aliased_struct) {
-  EXPECT_EQ("MyNamedAliasedStruct(5)", knot::debug(MyNamedAliasedStruct{5}));
-}
+TEST(Debug, named_aliased_struct) { EXPECT_EQ("MyNamedAliasedStruct(5)", knot::debug(MyNamedAliasedStruct{5})); }

@@ -1,11 +1,8 @@
 #pragma once
 
 #include <array>
-#include <memory>
-#include <optional>
 #include <type_traits>
 #include <utility>
-#include <variant>
 
 namespace knot {
 
@@ -13,6 +10,8 @@ template <typename T>
 struct Type {
   using type = T;
 };
+
+struct NotAType {};
 
 template <typename T1, typename T2>
 constexpr bool operator==(Type<T1>, Type<T2>) {
@@ -24,6 +23,29 @@ constexpr bool operator!=(Type<T1> t1, Type<T2> t2) {
   return !(t1 == t2);
 }
 
+constexpr bool operator==(NotAType, NotAType) { return false; }
+constexpr bool operator!=(NotAType, NotAType) { return true; }
+
+template <typename T>
+constexpr bool operator==(Type<T>, NotAType) {
+  return false;
+}
+
+template <typename T>
+constexpr bool operator==(NotAType, Type<T>) {
+  return false;
+}
+
+template <typename T>
+constexpr bool operator!=(Type<T>, NotAType) {
+  return true;
+}
+
+template <typename T>
+constexpr bool operator!=(NotAType, Type<T>) {
+  return true;
+}
+
 template <typename T>
 using type_t = typename T::type;
 
@@ -33,6 +55,11 @@ struct TypeList {};
 template <typename... Ts>
 constexpr auto typelist(Type<Ts>...) {
   return TypeList<Ts...>{};
+}
+
+template <typename T>
+constexpr auto type_of(const T&) {
+  return Type<T>{};
 }
 
 template <typename... Ts>
@@ -60,16 +87,6 @@ constexpr auto idx_seq(TypeList<Ts...>) {
   return std::make_index_sequence<sizeof...(Ts)>{};
 }
 
-template <typename... Ts>
-constexpr auto as_tuple(TypeList<Ts...>) {
-  return Type<std::tuple<Ts...>>{};
-}
-
-template <typename... Ts>
-constexpr auto as_typelist(Type<std::tuple<Ts...>>) {
-  return TypeList<Ts...>{};
-}
-
 template <typename T>
 constexpr bool is_enum(Type<T>) {
   return std::is_enum_v<T>;
@@ -91,58 +108,8 @@ constexpr bool is_array(Type<std::array<T, N>>) {
 }
 
 template <typename T>
-constexpr bool is_optional(Type<T>) {
-  return false;
-}
-
-template <typename T>
-constexpr bool is_optional(Type<std::optional<T>>) {
-  return true;
-}
-
-template <typename T>
 constexpr bool is_raw_pointer(Type<T>) {
   return std::is_pointer_v<T>;
-}
-
-template <typename T>
-constexpr bool is_pointer(Type<T> t) {
-  return is_raw_pointer(t);
-}
-
-template <typename T, typename D>
-constexpr bool is_pointer(Type<std::unique_ptr<T, D>>) {
-  return true;
-}
-
-template <typename T>
-constexpr bool is_pointer(Type<std::shared_ptr<T>>) {
-  return true;
-}
-
-template <typename T>
-constexpr bool is_tuple(Type<T>) {
-  return false;
-}
-
-template <typename... Ts>
-constexpr bool is_tuple(Type<std::tuple<Ts...>>) {
-  return true;
-}
-
-template <typename... Ts>
-constexpr auto idx_seq(Type<std::tuple<Ts...>>) {
-  return std::make_index_sequence<sizeof...(Ts)>{};
-}
-
-template <typename T>
-constexpr bool is_variant(Type<T>) {
-  return false;
-}
-
-template <typename... Ts>
-constexpr bool is_variant(Type<std::variant<Ts...>>) {
-  return true;
 }
 
 template <typename T>
@@ -158,6 +125,30 @@ constexpr bool is_decayed(Type<T> t) {
 template <typename T>
 constexpr bool is_ref(Type<T>) {
   return std::is_reference_v<T>;
+}
+
+template <typename T>
+constexpr bool is_aggregate(Type<T>) {
+  return std::is_aggregate_v<T>;
+}
+
+template <typename F, typename... Ts>
+constexpr auto is_invocable(Type<F>, TypeList<Ts...>) {
+  return std::is_invocable_v<F, Ts...>;
+}
+
+template <typename F, typename... Ts>
+constexpr auto invoke_result(Type<F> f, TypeList<Ts...> ts) {
+  if constexpr (is_invocable(f, ts)) {
+    return Type<std::invoke_result_t<F, Ts...>>{};
+  } else {
+    return NotAType{};
+  }
+}
+
+template <typename T>
+constexpr auto value_type(Type<T> t) {
+  return Type<typename T::value_type>{};
 }
 
 namespace details {
@@ -183,9 +174,46 @@ constexpr auto is_valid(F) {
   return [](auto... ts) { return details::is_valid_helper<F, decltype(ts)...>::value; };
 }
 
+constexpr inline auto is_tuple_like = is_valid([](auto&& t) -> std::tuple_size<std::decay_t<decltype(t)>> {});
+
 template <typename T>
-constexpr bool is_range(Type<T> t) {
-  return is_valid([](auto&& t) -> decltype(t.begin()) {})(t) && is_valid([](auto&& t) -> decltype(t.end()) {})(t);
+constexpr auto tuple_size(Type<T>) {
+  return std::tuple_size_v<T>;
+}
+
+template <size_t I, typename T>
+constexpr auto tuple_element(Type<T>) {
+  return Type<std::tuple_element_t<I, T>>{};
+}
+
+template <typename T>
+constexpr auto idx_seq(Type<T> t) {
+  if constexpr (is_tuple_like(t)) {
+    return std::make_index_sequence<tuple_size(t)>{};
+  } else {
+    static_assert(is_tuple_like(t));
+    return std::make_index_sequence<0>{};
+  }
+}
+
+template <typename... Ts>
+constexpr auto as_tuple(TypeList<Ts...>) {
+  return Type<std::tuple<Ts...>>{};
+}
+
+template <typename T, size_t... Is>
+constexpr auto as_typelist(Type<T> t, std::index_sequence<Is...>) {
+  return typelist(tuple_element<Is>(t)...);
+}
+
+template <typename T>
+constexpr auto as_typelist(Type<T> t) {
+  if constexpr (is_tuple_like(t)) {
+    return as_typelist(t, idx_seq(t));
+  } else {
+    static_assert(is_tuple_like(t));
+    return typelist();
+  }
 }
 
 }  // namespace knot

@@ -1,11 +1,13 @@
 #pragma once
 
-#include "knot/core.h"
+#include "knot/hash.h"
+#include "knot/operators.h"
 
 #include <map>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 template <typename First, typename Second>
 struct Pair {
@@ -16,7 +18,7 @@ struct Pair {
 };
 
 template <typename First, typename Second>
-Pair(First, Second)->Pair<First, Second>;
+Pair(First, Second) -> Pair<First, Second>;
 
 struct Point {
   int x = 0;

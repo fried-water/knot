@@ -1,6 +1,6 @@
-#include "test_structs.h"
+#include "knot/hash.h"
 
-#include "knot/core.h"
+#include "test_structs.h"
 
 #include "gtest/gtest.h"
 
@@ -14,9 +14,7 @@ std::size_t hash_combine(std::size_t seed, std::size_t hash) {
 
 }  // namespace
 
-TEST(Hash, primitive) {
-  EXPECT_EQ(std::hash<int>{}(5), knot::hash_value(5));
-}
+TEST(Hash, primitive) { EXPECT_EQ(std::hash<int>{}(5), knot::hash_value(5)); }
 
 TEST(Hash, basic_struct) {
   const std::size_t expected_hash = hash_combine(hash_combine(0, 45), 89);
@@ -27,13 +25,15 @@ TEST(Hash, basic_struct) {
 
 TEST(Hash, composite_struct) {
   const Bbox bbox{Point{1, 2}, Point{3, 4}};
-  const std::size_t expected_hash =  hash_combine(hash_combine(0, knot::hash_value(Point{1, 2})), knot::hash_value(Point{3, 4}));
+  const std::size_t expected_hash =
+      hash_combine(hash_combine(0, knot::hash_value(Point{1, 2})), knot::hash_value(Point{3, 4}));
   EXPECT_EQ(expected_hash, knot::hash_value(bbox));
 }
 
 TEST(Hash, basic_optional) {
   const std::optional<Point> p = Point{45, 89};
-  const std::size_t expected_hash = hash_combine(static_cast<std::size_t>(static_cast<bool>(true)), knot::hash_value(Point{45, 89}));
+  const std::size_t expected_hash =
+      hash_combine(static_cast<std::size_t>(static_cast<bool>(true)), knot::hash_value(Point{45, 89}));
   EXPECT_EQ(expected_hash, knot::hash_value(p));
 
   EXPECT_EQ(0, knot::hash_value(std::optional<Point>{}));

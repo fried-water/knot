@@ -1,6 +1,6 @@
-#include "test_structs.h"
+#include "knot/area.h"
 
-#include "knot/core.h"
+#include "test_structs.h"
 
 #include "gtest/gtest.h"
 
@@ -84,13 +84,9 @@ TEST(Area, sum) {
   EXPECT_EQ(5, knot::area(std::variant<int, Memory>(Memory(5))));
 }
 
-TEST(Area, array) {
-  EXPECT_EQ(17, knot::area(std::array<Memory, 3>{Memory(10), Memory(5), Memory(2)}));
-}
+TEST(Area, array) { EXPECT_EQ(17, knot::area(std::array<Memory, 3>{Memory(10), Memory(5), Memory(2)})); }
 
-TEST(Area, trivially_destructible) {
-  EXPECT_EQ(0, knot::area(TriviallyDestructibleUntieable{}));
-}
+TEST(Area, trivially_destructible) { EXPECT_EQ(0, knot::area(TriviallyDestructibleUntieable{})); }
 
 TEST(Area, non_tuple_tie) {
   EXPECT_EQ(5, knot::area(MemoryWrapper{}));

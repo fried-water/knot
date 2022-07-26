@@ -1,11 +1,12 @@
-#include "test_structs.h"
+#include "knot/map.h"
 
-#include "knot/core.h"
+#include "test_structs.h"
 
 #include "gtest/gtest.h"
 
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <vector>
 
@@ -89,8 +90,8 @@ TEST(Map, variant) {
 }
 
 TEST(Map, override) {
-  const auto p2 =
-      knot::map<P2>(std::make_pair(1, std::string{"abc"}), [](const std::string& str) { return str.size(); });
+  const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}),
+                                [](const std::string& str) { return static_cast<int>(str.size()); });
   const P2 expected_p2{1, 3};
 
   EXPECT_EQ(expected_p2, p2);
@@ -138,9 +139,7 @@ struct ExplicitContructor {
   friend auto as_tie(const ExplicitContructor& e) { return std::tie(e.x); }
 };
 
-TEST(Map, explicit_constructor) {
-  EXPECT_EQ(1, knot::map<ExplicitContructor>(std::tuple(1)).x);
-}
+TEST(Map, explicit_constructor) { EXPECT_EQ(1, knot::map<ExplicitContructor>(std::tuple(1)).x); }
 
 TEST(Map, non_tuple_tie) {
   EXPECT_EQ(IntWrapper{5}, knot::map<IntWrapper>(5));

@@ -1,12 +1,12 @@
-#include "test_structs.h"
+#include "knot/traversals.h"
 
-#include "knot/core.h"
+#include "test_structs.h"
 
 #include "gtest/gtest.h"
 
 // a variant that contains all types used in this file
 using SomeType = std::variant<int, Point, Bbox, std::optional<Point>, std::vector<Point>, std::variant<int, Point>,
-  IntWrapper, VecWrapper, std::vector<int>, VariantWrapper, std::variant<int, float>>;
+                              IntWrapper, VecWrapper, std::vector<int>, VariantWrapper, std::variant<int, float>>;
 
 namespace {
 
@@ -56,9 +56,7 @@ TEST(Visit, optional) {
   EXPECT_EQ(expected, gather_objects(p));
 }
 
-TEST(Visit, nullopt) {
-  EXPECT_EQ(std::vector<SomeType>{}, gather_objects(std::optional<Point>()));
-}
+TEST(Visit, nullopt) { EXPECT_EQ(std::vector<SomeType>{}, gather_objects(std::optional<Point>())); }
 
 TEST(Visit, range) {
   const std::vector<Point> vec{Point{1, 2}, Point{3, 4}};

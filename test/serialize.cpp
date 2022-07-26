@@ -1,6 +1,6 @@
-#include "test_structs.h"
+#include "knot/serialize.h"
 
-#include "knot/core.h"
+#include "test_structs.h"
 
 #include "gtest/gtest.h"
 

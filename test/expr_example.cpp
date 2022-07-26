@@ -8,9 +8,7 @@ namespace {
 
 enum class Op { Add, Sub };
 
-std::ostream& debug(std::ostream& os, Op op) {
-  return os << (op == Op::Add ? "add" : "sub");
-}
+std::ostream& debug(std::ostream& os, Op op) { return os << (op == Op::Add ? "add" : "sub"); }
 
 struct BinaryExpr;
 struct UnaryExpr;

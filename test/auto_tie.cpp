@@ -1,4 +1,5 @@
-#include "knot/core.h"
+#include "knot/auto_as_tie.h"
+#include "knot/type_category.h"
 
 #include "gtest/gtest.h"
 
