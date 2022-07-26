@@ -2,7 +2,6 @@
 
 #include "knot/type_category.h"
 #include "knot/type_traits.h"
-#include "knot/visit_variant.h"
 
 namespace knot {
 
@@ -50,7 +49,7 @@ void visit(const T& t, Visitor visitor) {
   } else if constexpr (category(type) == TypeCategory::Product) {
     details::visit_tuple_like(t, try_visit, idx_seq(type));
   } else if constexpr (category(type) == TypeCategory::Sum) {
-    knot::visit_variant(t, try_visit);
+    std::visit(try_visit, t);
   } else if constexpr (category(type) == TypeCategory::Maybe) {
     if (static_cast<bool>(t)) try_visit(*t);
   } else if constexpr (category(type) == TypeCategory::Range) {
