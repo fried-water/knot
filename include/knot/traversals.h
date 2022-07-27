@@ -25,6 +25,11 @@ std::size_t size(const T& t) {
   return accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
 }
 
+template <typename T>
+std::size_t preorder_size(const T& t) {
+  return preorder_accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
+}
+
 namespace details {
 
 template <typename T, typename Visitor, std::size_t... Is>
