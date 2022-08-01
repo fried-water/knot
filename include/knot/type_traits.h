@@ -123,6 +123,16 @@ constexpr bool is_decayed(Type<T> t) {
 }
 
 template <typename T>
+constexpr auto remove_const(Type<const T>) {
+  return Type<T>{};
+}
+
+template <typename T>
+constexpr auto remove_const(Type<T>) {
+  return Type<T>{};
+}
+
+template <typename T>
 constexpr bool is_ref(Type<T>) {
   return std::is_reference_v<T>;
 }

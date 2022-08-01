@@ -40,6 +40,15 @@ TEST(Map, product) {
   EXPECT_EQ(expected_p1, p1);
 }
 
+TEST(Map, const_value) {
+  const int i = knot::map<const int>(3.0f);
+  EXPECT_EQ(3, i);
+
+  const auto pair = knot::map<std::pair<const int, const float>>(P1{1, 3});
+  std::pair<const int, const float> expected_pair{1, 3.0f};
+  EXPECT_EQ(expected_pair, pair);
+}
+
 TEST(Map, range) {
   const std::vector<P1> expected_p1{{1, 3}, {2, 4}};
 

@@ -24,12 +24,14 @@ Result map_tuple(Type<Tuple> tuple_type, T&& t, F f, std::index_sequence<Is...>)
 }  // namespace details
 
 template <typename Result, typename T, typename F>
-Result map(Type<Result> result_type, T&& t, F f) {
+Result map(Type<Result> const_result_type, T&& t, F f) {
   constexpr auto type = decay(Type<T>{});
+  constexpr auto result_type = remove_const(Type<Result>{});
 
   // Type category needs to align
   static_assert(result_type == invoke_result(Type<F>{}, typelist(type)) || category(result_type) == category(type));
 
+  static_assert(is_decayed(result_type));
   static_assert(!is_raw_pointer(result_type));
 
   if constexpr (result_type == invoke_result(Type<F>{}, typelist(type))) {
