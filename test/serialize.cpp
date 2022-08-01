@@ -89,6 +89,18 @@ TEST(Serialize, null_unique_ptr) {
   EXPECT_EQ(p, knot::deserialize<std::unique_ptr<Point>>(bytes.begin(), bytes.end()));
 }
 
+TEST(Serialize, move_only) {
+  using type = std::vector<std::tuple<std::optional<std::unique_ptr<int>>>>;
+
+  type vec;
+  vec.push_back(std::tuple(std::optional(std::make_unique<int>(7))));
+  const std::vector<std::byte> bytes = knot::serialize(vec);
+  const auto expected = as_bytes({1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 7, 0, 0, 0});
+  EXPECT_EQ(expected, bytes);
+
+  EXPECT_EQ(7, **std::get<0>((*knot::deserialize<type>(bytes.begin(), bytes.end()))[0]));
+}
+
 TEST(Serialize, range) {
   const std::vector<int> vec{1, 2, 3};
   const std::vector<std::byte> bytes = knot::serialize(vec);

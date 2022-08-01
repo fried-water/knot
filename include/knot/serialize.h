@@ -66,9 +66,6 @@ struct Monad<std::optional<std::pair<First, Second>>> {
   auto map(F f) && {
     return make_monad(opt ? std::optional(f(std::move(opt->first), std::move(opt->second))) : std::nullopt);
   }
-
-  operator std::optional<std::pair<First, Second>>() && { return std::move(opt); }
-  std::optional<std::pair<First, Second>> get() && { return std::move(opt); }
 };
 
 // deserialize helpers
@@ -81,14 +78,16 @@ std::optional<std::pair<std::tuple<Ts...>, IT>> tuple_deserialize(Type<std::tupl
   } else {
     constexpr auto tl = typelist(Type<Ts>{}...);
 
-    return make_monad(deserialize_partial(head(tl), begin, end)).and_then([&](auto&& first, IT begin) {
-      return make_monad(tuple_deserialize(as_tuple(tail(tl)), begin, end))
+    return make_monad(deserialize_partial(head(tl), begin, end))
+      .and_then([&](auto&& first, IT begin) {
+        return make_monad(tuple_deserialize(as_tuple(tail(tl)), begin, end))
           .map([&](auto&& rest, IT begin) {
             return std::pair(std::tuple<Ts...>{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))},
-                             begin);
+                            begin);
           })
-          .get();
-    });
+          .opt;
+      })
+      .opt;
   }
 }
 
@@ -96,7 +95,7 @@ template <typename T, typename IT>
 std::optional<std::pair<T, IT>> tuple_deserialize(Type<T> type, IT begin, IT end) {
   return details::make_monad(deserialize_partial(as_tuple(as_typelist(type)), begin, end))
       .map([](auto&& tuple, IT begin) { return std::pair(map<T>(std::move(tuple)), begin); })
-      .get();
+      .opt;
 }
 
 template <typename IT, typename... Ts>
@@ -105,7 +104,7 @@ std::optional<std::pair<std::variant<Ts...>, IT>> variant_deserialize(Type<std::
   static constexpr auto options = std::array{+[](IT begin, IT end) {
     return make_monad(deserialize_partial(Type<Ts>{}, begin, end))
         .map([](auto&& ele, IT begin) { return std::pair(std::variant<Ts...>{std::move(ele)}, begin); })
-        .get();
+        .opt;
   }...};
   return index >= sizeof...(Ts) ? std::nullopt : options[index](begin, end);
 }
@@ -176,7 +175,7 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(Type<Outer> outer_type, 
   if constexpr (is_tieable(type)) {
     return details::make_monad(deserialize_partial(tie_type(type), begin, end))
         .map([](auto tied_type, IT begin) { return std::pair(map<T>(std::move(tied_type)), begin); })
-        .get();
+        .opt;
   } else if constexpr (category(type) == TypeCategory::Primative) {
     if (std::distance(begin, end) < sizeof(T)) return std::nullopt;
 
@@ -189,21 +188,24 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(Type<Outer> outer_type, 
     return std::pair<T, IT>{t, begin + sizeof(T)};
   } else if constexpr (category(type) == TypeCategory::Sum) {
     return details::make_monad(deserialize_partial(Type<std::size_t>{}, begin, end))
-        .and_then([&](std::size_t index, IT begin) { return details::variant_deserialize(type, begin, end, index); });
+        .and_then([&](std::size_t index, IT begin) { return details::variant_deserialize(type, begin, end, index); })
+        .opt;
   } else if constexpr (category(type) == TypeCategory::Maybe) {
     using optional_t = std::optional<std::decay_t<decltype(*std::declval<T>())>>;
     return details::make_monad(deserialize_partial(Type<bool>{}, begin, end))
         .and_then([end](bool has_value, IT begin) -> std::optional<std::pair<optional_t, IT>> {
           if (has_value) {
             return details::make_monad(deserialize_partial(Type<typename optional_t::value_type>{}, begin, end))
-                .map([](auto&& inner, IT begin) { return std::pair(std::make_optional(std::move(inner)), begin); });
+                .map([](auto&& inner, IT begin) { return std::pair(std::make_optional(std::move(inner)), begin); })
+                .opt;
           } else {
             return std::pair(std::nullopt, begin);
           }
         })
         .map([&](optional_t&& optional, IT begin) {
           return std::pair(details::from_optional(type, std::move(optional)), begin);
-        });
+        })
+        .opt;
   } else if constexpr (category(type) == TypeCategory::Range) {
     return details::make_monad(deserialize_partial(Type<std::size_t>{}, begin, end))
         .map([&](std::size_t size, IT begin) -> std::optional<std::pair<T, IT>> {
@@ -222,7 +224,8 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(Type<Outer> outer_type, 
           }
 
           return std::pair<T, IT>{std::move(range), begin};
-        });
+        })
+        .opt;
   } else if constexpr (category(type) == TypeCategory::Product) {
     return details::tuple_deserialize(type, begin, end);
   } else {
