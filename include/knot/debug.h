@@ -16,16 +16,16 @@
 namespace knot {
 
 struct MultiLine {
-  int collapse_threshold = 10;
+  int collapse_threshold = 30;
   int tab_size = 2;
   int indentation = 0;
 };
 
 template <typename T>
-std::string debug(const T&, std::optional<MultiLine> = {});
+std::string debug(const T&, std::optional<MultiLine> = MultiLine{});
 
 template <typename T>
-std::ostream& debug(std::ostream&, const T&, std::optional<MultiLine> = {});
+std::ostream& debug(std::ostream&, const T&, std::optional<MultiLine> = MultiLine{});
 
 template <size_t N>
 struct Names {
@@ -38,18 +38,17 @@ struct Names {
       members[i] = members_[i];
     }
   }
-  constexpr explicit Names(const std::string_view (&members_)[N]) {
-    for(size_t i = 0; i < N; i++) {
-      members[i] = members_[i];
-    }
-  }
+  constexpr explicit Names(const std::string_view (&members_)[N]) : Names("", members_) {}
 
   constexpr static size_t member_count() { return N; }
 
-  std::optional<std::string_view> name;
+  friend auto as_tie(const Names& n) { return std::tie(n.name, n.members); }
+
+  std::string_view name = {};
   std::array<std::string_view, N> members = {};
 };
 
+Names() -> Names<0>;
 Names(std::string_view) -> Names<0>;
 
 constexpr inline auto has_names = is_valid([](auto&& t) -> decltype(names(decay(Type<decltype(t)>{}))) {});
@@ -127,7 +126,16 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
 
   if(multi) {
     int count = 0;
-    preorder(t, [&](const auto&) { return ++count <= multi->collapse_threshold; });
+    preorder(t, [&](const auto& t) {
+      constexpr auto type = decay(Type<decltype(t)>{});
+      if constexpr(has_names(type)) {
+        count += preorder_accumulate<int>(names(type), [&](int acc, std::string_view sv) {
+          return acc + static_cast<int>(sv.size());
+        });
+      }
+
+      return ++count <= multi->collapse_threshold;
+    });
     multi = count <= multi->collapse_threshold ? std::nullopt : multi;
   }
 
@@ -139,9 +147,8 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
     return debug(os, as_tie(t), multi);
   } else if constexpr (is_tieable(type)) {
     constexpr auto t_names = names(type);
-    if (t_names.name) {
-      os << *t_names.name;
-    }
+
+    os << t_names.name;
 
     if constexpr (is_tuple_like(tie_type(type))) {
       static_assert(t_names.member_count() == 0 || t_names.member_count() == size(as_typelist(tie_type(type))));
