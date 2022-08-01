@@ -20,14 +20,14 @@ struct BinaryExpr {
   Expr lhs;
   Expr rhs;
 
-  friend auto names(knot::Type<BinaryExpr>) { return knot::Names{"BinaryExpr", {"op", "lhs", "rhs"}}; }
+  friend constexpr auto names(knot::Type<BinaryExpr>) { return knot::Names{"BinaryExpr", {"op", "lhs", "rhs"}}; }
 };
 
 struct UnaryExpr {
   Op op;
   Expr child;
 
-  friend auto names(knot::Type<UnaryExpr>) { return knot::Names{"UnaryExpr", {"op", "child"}}; }
+  friend constexpr auto names(knot::Type<UnaryExpr>) { return knot::Names{"UnaryExpr", {"op", "child"}}; }
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {

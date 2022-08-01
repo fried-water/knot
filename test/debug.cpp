@@ -77,7 +77,14 @@ struct MyNamedStruct {
   int member1;
   int member2;
 
-  friend auto names(knot::Type<MyNamedStruct>) { return knot::Names("MyNamedStruct", {"member1", "member2"}); }
+  friend constexpr auto names(knot::Type<MyNamedStruct>) { return knot::Names("MyNamedStruct", {"member1", "member2"}); }
+};
+
+struct MySemiNamedStruct {
+  int member1;
+  int member2;
+
+  friend constexpr auto names(knot::Type<MySemiNamedStruct>) { return knot::Names("MySemiNamedStruct"); }
 };
 
 struct MyNamedAliasedStruct {
@@ -85,12 +92,14 @@ struct MyNamedAliasedStruct {
 
   friend auto as_tie(const MyNamedAliasedStruct& m) { return m.value; }
 
-  friend auto names(knot::Type<MyNamedAliasedStruct>) { return knot::Names("MyNamedAliasedStruct"); }
+  friend constexpr auto names(knot::Type<MyNamedAliasedStruct>) { return knot::Names("MyNamedAliasedStruct"); }
 };
 
 }  // namespace
 
 TEST(Debug, named_struct) { EXPECT_EQ("MyNamedStruct(member1: 5, member2: 3)", knot::debug(MyNamedStruct{5, 3})); }
+
+TEST(Debug, semi_named_struct) { EXPECT_EQ("MySemiNamedStruct(5, 3)", knot::debug(MySemiNamedStruct{5, 3})); }
 
 TEST(Debug, named_aliased_struct) { EXPECT_EQ("MyNamedAliasedStruct(5)", knot::debug(MyNamedAliasedStruct{5})); }
 

@@ -34,16 +34,20 @@ struct Names {
   constexpr explicit Names(std::string_view name) : name(name) {}
 
   constexpr explicit Names(std::string_view name, const std::string_view (&members_)[N]) : name(name) {
-    std::copy(std::begin(members_), std::end(members_), std::begin(members));
+    for(size_t i = 0; i < N; i++) {
+      members[i] = members_[i];
+    }
   }
   constexpr explicit Names(const std::string_view (&members_)[N]) {
-    std::copy(std::begin(members_), std::end(members_), std::begin(members));
+    for(size_t i = 0; i < N; i++) {
+      members[i] = members_[i];
+    }
   }
 
   constexpr static size_t member_count() { return N; }
 
   std::optional<std::string_view> name;
-  std::array<std::string_view, N> members;
+  std::array<std::string_view, N> members = {};
 };
 
 Names(std::string_view) -> Names<0>;
@@ -134,14 +138,19 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
   } else if constexpr (is_tieable(type) && !has_names(type)) {
     return debug(os, as_tie(t), multi);
   } else if constexpr (is_tieable(type)) {
-    const auto t_names = names(type);
+    constexpr auto t_names = names(type);
     if (t_names.name) {
       os << *t_names.name;
     }
 
     if constexpr (is_tuple_like(tie_type(type))) {
-      static_assert(t_names.member_count() == size(as_typelist(tie_type(type))));
-      debug_list(os, as_tie(t), multi, false, t_names.members.data());
+      static_assert(t_names.member_count() == 0 || t_names.member_count() == size(as_typelist(tie_type(type))));
+
+      if constexpr(t_names.member_count() == 0) {
+        debug_list(os, as_tie(t), multi);
+      } else {
+        debug_list(os, as_tie(t), multi, false, t_names.members.data());
+      }
     } else {
       debug(os << '(', as_tie(t), multi) << ')';
     }
