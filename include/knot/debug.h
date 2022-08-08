@@ -128,7 +128,7 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
     int count = 0;
     preorder(t, [&](const auto& t) {
       constexpr auto type = decay(Type<decltype(t)>{});
-      if constexpr(has_names(type)) {
+      if constexpr(has_names(type) && is_tieable(type)) {
         count += preorder_accumulate<int>(names(type), [&](int acc, std::string_view sv) {
           return acc + static_cast<int>(sv.size());
         });
@@ -164,7 +164,22 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
   } else if constexpr (is_arithmetic(type)) {
     os << t;
   } else if constexpr (is_enum(type)) {
-    os << static_cast<std::underlying_type_t<T>>(t);
+    const auto idx = static_cast<std::underlying_type_t<T>>(t); 
+    if constexpr(has_names(type)) {
+      constexpr auto t_names = names(type);
+      if(static_cast<std::size_t>(idx) < t_names.members.size()) {
+        if constexpr(!t_names.name.empty()) {
+          os << t_names.name << "::";
+        }
+        os <<  t_names.members[idx];
+      } else if constexpr(!t_names.name.empty()) {
+        os << t_names.name << "(" << idx << ")";
+      } else {
+        os << "invalid_enum(" << idx << ")";
+      }
+    } else {
+      os << idx;
+    }
   } else if constexpr (category(type) == TypeCategory::Maybe) {
     static_cast<bool>(t) ? debug(os, *t, multi) : os << "none";
   } else if constexpr (category(type) == TypeCategory::Sum) {

@@ -95,6 +95,15 @@ struct MyNamedAliasedStruct {
   friend constexpr auto names(knot::Type<MyNamedAliasedStruct>) { return knot::Names("MyNamedAliasedStruct"); }
 };
 
+enum class UnnamedEnum { One, Two, Three };
+enum class TitledEnum { One, Two, Three };
+enum class PartialNamedEnum { One, Two, Three };
+enum class NamedEnum { One, Two, Three };
+
+constexpr auto names(knot::Type<TitledEnum>) { return knot::Names("TitledEnum"); }
+constexpr auto names(knot::Type<PartialNamedEnum>) { return knot::Names({"One", "Two", "Three"}); }
+constexpr auto names(knot::Type<NamedEnum>) { return knot::Names("NamedEnum", {"One", "Two", "Three"}); }
+
 }  // namespace
 
 TEST(Debug, named_struct) { EXPECT_EQ("MyNamedStruct(member1: 5, member2: 3)", knot::debug(MyNamedStruct{5, 3})); }
@@ -123,4 +132,18 @@ TEST(Debug, multiline_struct) {
   EXPECT_EQ("MyNamedStruct(member1: 0, member2: 1)", knot::debug(MyNamedStruct{0, 1}, knot::MultiLine{30}));
 
   EXPECT_EQ("(\n abc,\n (),\n (\n  1,\n  2\n )\n)", knot::debug(std::tuple("abc", std::tuple(), std::tuple(1, 2)), knot::MultiLine{2, 1}));
+}
+
+TEST(Debug, named_enum) {
+  EXPECT_EQ("NamedEnum::One", knot::debug(NamedEnum::One));
+  EXPECT_EQ("NamedEnum(-1)", knot::debug(static_cast<NamedEnum>(-1)));
+
+  EXPECT_EQ("TitledEnum(0)", knot::debug(TitledEnum::One));
+  EXPECT_EQ("TitledEnum(-1)", knot::debug(static_cast<TitledEnum>(-1)));
+
+  EXPECT_EQ("One", knot::debug(PartialNamedEnum::One));
+  EXPECT_EQ("invalid_enum(-1)", knot::debug(static_cast<PartialNamedEnum>(-1)));
+
+  EXPECT_EQ("0", knot::debug(UnnamedEnum::One));
+  EXPECT_EQ("-1", knot::debug(static_cast<UnnamedEnum>(-1)));
 }
