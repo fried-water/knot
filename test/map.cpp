@@ -88,14 +88,18 @@ TEST(Map, maybe) {
 }
 
 TEST(Map, variant) {
-  const auto var = knot::map<std::variant<int, char>>(std::variant<int>{1});
-  const auto expected = std::variant<int, char>{1};
+  const auto var = knot::map<std::variant<float, int, char>>(std::variant<int>{1});
+  const auto expected = std::variant<float, int, char>{1};
   EXPECT_EQ(expected, var);
 
   const auto var_override = knot::map<std::variant<int, std::size_t>>(
       std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
   const auto expected_override = std::variant<int, std::size_t>{3ul};
   EXPECT_EQ(expected_override, var_override);
+
+  const auto var_map = knot::map<std::variant<P1, int>>(std::variant<std::pair<int, int>, int>{std::pair(1, 1)});
+  const auto expected_map = std::variant<P1, int>{P1{1, 1}};
+  EXPECT_EQ(expected_map, var_map);
 }
 
 TEST(Map, override) {

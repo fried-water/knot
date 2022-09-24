@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -75,6 +76,36 @@ constexpr auto head(TypeList<T, Ts...>) {
 template <typename T, typename... Ts>
 constexpr auto tail(TypeList<T, Ts...>) {
   return TypeList<Ts...>{};
+}
+
+template<int I, typename T>
+constexpr std::optional<int> idx_of_helper(TypeList<>, Type<T>) { return std::nullopt; }
+
+template<int I, typename T, typename... Ts>
+constexpr std::optional<int> idx_of_helper(TypeList<Ts...> ts, Type<T> t) {
+  return t == head(ts) ? std::optional(I) : idx_of_helper<I + 1>(tail(ts), t);
+}
+
+template<typename T, typename... Ts>
+constexpr std::optional<int> idx_of(TypeList<Ts...> ts, Type<T> t) {
+  return idx_of_helper<0>(ts, t);
+}
+
+template<typename T, typename... Ts>
+constexpr bool contains(TypeList<Ts...> ts, Type<T> t) {
+  return idx_of(ts, t).has_value();
+}
+
+template<int I>
+constexpr auto get(TypeList<>) { return NotAType{}; }
+
+template<int I, typename... Ts>
+constexpr auto get(TypeList<Ts...> ts) {
+  if constexpr(I == 0) {
+    return head(ts);
+  } else {
+    return get<I - 1>(tail(ts));
+  }
 }
 
 template <typename... Ts, typename F>
@@ -196,14 +227,9 @@ constexpr auto tuple_element(Type<T>) {
   return Type<std::tuple_element_t<I, T>>{};
 }
 
-template <typename T>
+template <typename T, typename = std::enable_if_t<is_tuple_like(Type<T>{})>>
 constexpr auto idx_seq(Type<T> t) {
-  if constexpr (is_tuple_like(t)) {
-    return std::make_index_sequence<tuple_size(t)>{};
-  } else {
-    static_assert(is_tuple_like(t));
-    return std::make_index_sequence<0>{};
-  }
+  return std::make_index_sequence<tuple_size(t)>{};
 }
 
 template <typename... Ts>
@@ -216,14 +242,14 @@ constexpr auto as_typelist(Type<T> t, std::index_sequence<Is...>) {
   return typelist(tuple_element<Is>(t)...);
 }
 
-template <typename T>
+template <typename T, typename = std::enable_if_t<is_tuple_like(Type<T>{})>>
 constexpr auto as_typelist(Type<T> t) {
-  if constexpr (is_tuple_like(t)) {
-    return as_typelist(t, idx_seq(t));
-  } else {
-    static_assert(is_tuple_like(t));
-    return typelist();
-  }
+  return as_typelist(t, idx_seq(t));
+}
+
+template <typename... Ts>
+constexpr auto as_typelist(Type<std::variant<Ts...>> t) {
+  return TypeList<Ts...>{};
 }
 
 }  // namespace knot

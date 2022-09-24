@@ -51,13 +51,15 @@ Result map(Type<Result> const_result_type, T&& t, F f) {
   } else if constexpr (category(result_type) == TypeCategory::Product) {
     return details::map_tuple<Result>(result_type, std::forward<T>(t), f, idx_seq(result_type));
   } else if constexpr (category(result_type) == TypeCategory::Sum) {
-    // can only map from equivalent variants or if the Result variant is a superset of types
     return std::visit(
         [&](auto&& val) -> Result {
-          if constexpr (is_invocable(Type<F>{}, typelist(decay(Type<decltype(val)>{})))) {
+          const auto var_type = decay(Type<decltype(val)>{});
+          if constexpr (is_invocable(Type<F>{}, typelist(var_type))) {
             return f(std::forward<decltype(val)>(val));
-          } else {
+          } else if constexpr(contains(as_typelist(result_type), var_type)) {
             return std::forward<decltype(val)>(val);
+          } else {
+            return map(get<*idx_of(as_typelist(type), var_type)>(as_typelist(result_type)), std::forward<decltype(val)>(val), f);
           }
         },
         std::forward<T>(t));
