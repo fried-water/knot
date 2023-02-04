@@ -1,26 +1,27 @@
 # knot
-Utility framework to recursively visit regular composite types. This allows knot to implement a generic hash(), serialize(), deserialize(), lexicographic ordered and comparison operators, debug() (without member names). This can already be done with most composite types in the standard library: tuple, pair, variant,  optional, most range containers, etc. However, due to a lack of reflection in the language its impossible to visit the members of a struct. Some libraries such as [boost work around this using macros.](https://www.boost.org/doc/libs/1_72_0/libs/fusion/doc/html/fusion/adapted/define_struct.html)
 
-Instead knot require structs implement `as_tie(const T&)` that returns a tie of its members (or the subset that represent its identity). In c++17 `as_tie(const T&)` can be auto generated with some template hackery for aggregate structs with no base classes, otherwise it needs to be manually implemented. 
+knot is a cpp++17 dependency free header only library to provide generic utility functions such as hash_value(), serialize(), debug() (without member names), lexicographic order and comparison operators (superseded by spaceship operator in c++20) to aggregate types with no base classes. knot also supports most std containers (tuple, pair, optional, variant, most range containers). The original motivation was `#[derive(Debug)]` from rust and similar.
 
 ```cpp
 struct Point {
-  KNOT_COMPAREABLE(Point) // Generates comparison ops
-
   int x = 0;
   int y = 0;
+
+  KNOT_COMPAREABLE(Point) // Generates comparison ops
 };
 
 void example(const Point& p) {
   std::size_t hash = knot::hash_value(p);
   std::cout << knot::debug(p) << '\n';
+  // Eg: "(1, 2)"
 
+  // should serialize to 8 bytes
   std::vector<uint8_t> bytes = knot::serialize(p);
   assert(p == knot::deserialize<Point>(bytes.begin(), bytes.end()));
 }
 ```
 
-In addition to structs with `as_tie(const T&)`, knot also recusively supports most composite types in the standard language: tuple, pair, variant, optional, any range, unique/shared/raw ptr. In addition to the above functions knot also provides a higher level `preorder(const T&, F)` and `preorder_accumulate<Acc>(const T&, F, Acc)` function that traverse objects in a preorder traversal.
+Many of the above operations are implemented in terms of more generic static traversals. For example if you consider `std::pair<std::string, std::optional<int>>` as depth 3 tree with pair at the root, string and optional as its children, and the strings characters and int as the leaves. `knot::preorder(const T&)` will statically visit this tree in a preorder traversal, likewise with `knot::postorder(const T&)`. `knot::visit(const T&)` will visit the direct children, same as std::visit for variant, the members of a struct, or the elements of a range. All the traveral functions will statically skip visiting objects if the supplied visitor cannot be called, be wary of implicit conversions.
 
 ```cpp
 enum class Op {Add, Sub};
@@ -52,12 +53,14 @@ void example(const Expr& expr) {
   assert(deserialized.has_value() && knot::debug(expr) == knot::debug(*deserialized));
 }
 
-int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::preorder_accumulate(expr, [desired_op](int acc, Op op) {
-    return op == desired_op ? acc + 1 : acc;
+// Count the number of Add operators in the expression tree
+int num_adds(const Expr& expr) {
+  return knot::preorder_accumulate(expr, [](int acc, Op op) {
+    return op == Op::Add ? acc + 1 : acc;
   }, 0);
 }
 
+// Print all leaf integers in the expression tree
 void dump_leaf_values(const Expr& expr) {
   return knot::preorder(expr, [](int leaf) {
     std::cout << "Leaf: " << leaf << '\n';
@@ -65,3 +68,5 @@ void dump_leaf_values(const Expr& expr) {
 }
 
 ```
+
+Look at the unit tests under test/ for more examples.
