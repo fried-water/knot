@@ -6,7 +6,7 @@
 namespace knot {
 
 template <typename T, typename F>
-void visit(const T&, F);
+void visit(T&&, F);
 
 template <typename Result, typename T, typename F>
 Result accumulate(const T& t, F f, Result acc = {});
@@ -33,32 +33,38 @@ std::size_t preorder_size(const T& t) {
 namespace details {
 
 template <typename T, typename Visitor, std::size_t... Is>
-void visit_tuple_like(const T& tuple, Visitor visitor, std::index_sequence<Is...>) {
-  ((visitor(std::get<Is>(tuple))), ...);
+void visit_tuple_like(T&& tuple, Visitor visitor, std::index_sequence<Is...>) {
+  ((visitor(std::get<Is>(std::forward<T>(tuple)))), ...);
 }
 
 }  // namespace details
 
 template <typename T, typename Visitor>
-void visit(const T& t, Visitor visitor) {
-  constexpr Type<T> type = {};
+void visit(T&& t, Visitor visitor) {
+  constexpr auto type = decay(Type<T>{});
 
-  const auto try_visit = [&](const auto& val) {
+  const auto try_visit = [&](auto&& val) {
     if constexpr (is_invocable(Type<Visitor>{}, TypeList<decltype(val)>{})) {
-      visitor(val);
+      visitor(std::forward<decltype(val)>(val));
     }
   };
 
   if constexpr (is_tieable(type)) {
-    knot::visit(as_tie(t), visitor);
+    knot::visit(as_tie(std::forward<T>(t)), visitor);
   } else if constexpr (category(type) == TypeCategory::Product) {
-    details::visit_tuple_like(t, try_visit, idx_seq(type));
+    details::visit_tuple_like(std::forward<T>(t), try_visit, idx_seq(type));
   } else if constexpr (category(type) == TypeCategory::Sum) {
-    std::visit(try_visit, t);
+    std::visit(try_visit, std::forward<T>(t));
   } else if constexpr (category(type) == TypeCategory::Maybe) {
-    if (static_cast<bool>(t)) try_visit(*t);
+    if (static_cast<bool>(t)) try_visit(*std::forward<T>(t));
   } else if constexpr (category(type) == TypeCategory::Range) {
-    for (const auto& val : t) try_visit(val);
+    for (auto&& val : t) {
+      if constexpr(is_ref(Type<T>{})) {
+        try_visit(val);
+      } else {
+        try_visit(std::move(val));
+      }
+    }
   }
 }
 

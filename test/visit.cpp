@@ -86,6 +86,57 @@ BOOST_AUTO_TEST_CASE(visit_non_tuple_tie) {
   BOOST_CHECK(gather_objects(std::variant<int, float>(5)) == gather_objects(VariantWrapper{5}));
 }
 
+BOOST_AUTO_TEST_CASE(visit_primitive_lvalue) {
+  int x = 7;
+  knot::visit(x, [](int&) { BOOST_CHECK(false); });
+  BOOST_CHECK(7 == x);
+}
+
+BOOST_AUTO_TEST_CASE(visit_struct_lvalue) {
+  Point p{0, 0};
+  knot::visit(p, [](int& y) { y = 1; });
+  BOOST_CHECK((Point{1, 1}) == p);
+}
+
+BOOST_AUTO_TEST_CASE(visit_optional_lvalue) {
+  std::optional<Point> p = Point{0, 0};
+  knot::visit(p, [](Point& y) { y = {1, 2}; });
+  BOOST_CHECK((Point{1, 2}) == p);
+}
+
+BOOST_AUTO_TEST_CASE(visit_variant_lvalue) {
+  std::variant<int, Point> v = 0;
+  knot::visit(v, [](int& y) { y = 2; });
+  BOOST_CHECK((std::variant<int, Point>{2}) == v);
+}
+
+BOOST_AUTO_TEST_CASE(visit_range_lvalue) {
+  std::vector<int> v{1, 2, 3};
+  knot::visit(v, [](int& y) { y = 7; });
+  BOOST_CHECK((std::vector<int>{7, 7, 7}) == v);
+}
+
+BOOST_AUTO_TEST_CASE(visit_move_only) {
+  const auto extract_unique_ptr = [](auto t) {
+    std::unique_ptr<int> ptr;
+    knot::visit(std::move(t), [&](std::unique_ptr<int> p) { ptr = std::move(p); });
+    return ptr ? std::optional(*ptr) : std::nullopt;
+  };
+
+  BOOST_CHECK(std::nullopt == extract_unique_ptr(std::make_unique<int>(7)));
+
+  BOOST_CHECK(std::nullopt == extract_unique_ptr(5));
+  BOOST_CHECK(std::nullopt == extract_unique_ptr(std::pair('a', 5)));
+  BOOST_CHECK(7 == extract_unique_ptr(std::pair{5, std::make_unique<int>(7)}));
+  BOOST_CHECK(7 == extract_unique_ptr(std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(7)}));
+
+  std::vector<std::unique_ptr<int>> v;
+  v.push_back(std::make_unique<int>(1));
+  v.push_back(std::make_unique<int>(2));
+  BOOST_CHECK(2 == extract_unique_ptr(std::move(v)));
+  BOOST_CHECK(std::nullopt == extract_unique_ptr(std::move(v)));
+}
+
 BOOST_AUTO_TEST_CASE(preorder_primitive) { BOOST_CHECK(std::vector<SomeType>{5} == gather_preorder_objects(5)); }
 
 BOOST_AUTO_TEST_CASE(preorder_basic_struct) {
