@@ -1,6 +1,6 @@
 #include "knot/core.h"
 
-#include "gtest/gtest.h"
+#include <boost/test/unit_test.hpp>
 
 #include <iostream>
 
@@ -54,11 +54,11 @@ auto make_big_expr() {
 
 }  // namespace
 
-TEST(Expr, test) {
+BOOST_AUTO_TEST_CASE(expr_test) {
   const Expr expr = make_big_expr();
 
-  EXPECT_EQ(2, num_ops(expr, Op::Add));
-  EXPECT_EQ(3, num_ops(expr, Op::Sub));
+  BOOST_CHECK(2 == num_ops(expr, Op::Add));
+  BOOST_CHECK(3 == num_ops(expr, Op::Sub));
 
   dump_leaf_values(expr);
   std::cout << "Hash: " << knot::hash_value(expr) << '\n';
@@ -67,7 +67,7 @@ TEST(Expr, test) {
   const std::vector<std::byte> bytes = knot::serialize(expr);
   const std::optional<Expr> deserialized = knot::deserialize<Expr>(bytes.begin(), bytes.end());
 
-  EXPECT_TRUE(deserialized.has_value());
+  BOOST_TEST(deserialized.has_value());
   // Don't have op== and unique_ptr doesn't do deep comparisons anyway so compare strings instead
-  EXPECT_EQ(knot::debug(expr), knot::debug(*deserialized));
+  BOOST_CHECK(knot::debug(expr) == knot::debug(*deserialized));
 }

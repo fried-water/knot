@@ -2,7 +2,7 @@
 
 #include "test_structs.h"
 
-#include "gtest/gtest.h"
+#include <boost/test/unit_test.hpp>
 
 #include <map>
 #include <memory>
@@ -22,92 +22,92 @@ struct P2 {
   int y;
 };
 
-TEST(Map, primitive) {
+BOOST_AUTO_TEST_CASE(map_primitive) {
   const int x = knot::map<int>(1.0f);
-  EXPECT_EQ(1, x);
+  BOOST_CHECK(1 == x);
 }
 
-TEST(Map, product) {
+BOOST_AUTO_TEST_CASE(map_product) {
   const auto p2 = knot::map<P2>(P1{1, 3});
   const P2 expected_p2{1, 3};
-  EXPECT_EQ(expected_p2, p2);
+  BOOST_CHECK(expected_p2 == p2);
 
   const auto pair = knot::map<std::pair<int, float>>(P1{1, 3});
-  EXPECT_EQ(std::make_pair(1, 3.0f), pair);
+  BOOST_CHECK(std::pair(1, 3.0f) == pair);
 
   const auto p1 = knot::map<P1>(std::make_pair(1, 3.0f));
   const P1 expected_p1{1, 3};
-  EXPECT_EQ(expected_p1, p1);
+  BOOST_CHECK(expected_p1 == p1);
 }
 
-TEST(Map, const_value) {
+BOOST_AUTO_TEST_CASE(map_const_value) {
   const int i = knot::map<const int>(3.0f);
-  EXPECT_EQ(3, i);
+  BOOST_CHECK(3 == i);
 
   const auto pair = knot::map<std::pair<const int, const float>>(P1{1, 3});
   std::pair<const int, const float> expected_pair{1, 3.0f};
-  EXPECT_EQ(expected_pair, pair);
+  BOOST_CHECK(expected_pair == pair);
 }
 
-TEST(Map, range) {
+BOOST_AUTO_TEST_CASE(map_range) {
   const std::vector<P1> expected_p1{{1, 3}, {2, 4}};
 
   const auto vec1 = knot::map<std::vector<P1>>(std::vector<P2>{{1, 3}, {2, 4}});
-  EXPECT_EQ(expected_p1, vec1);
+  BOOST_CHECK(expected_p1 == vec1);
 
   const auto vec2 = knot::map<std::vector<P1>>(std::map<int, int>{{1, 3}, {2, 4}});
-  EXPECT_EQ(expected_p1, vec2);
+  BOOST_CHECK(expected_p1 == vec2);
 
   const auto map1 = knot::map<std::map<int, int>>(expected_p1);
   const std::map<int, int> expected_map{{1, 3}, {2, 4}};
-  EXPECT_EQ(expected_map, map1);
+  BOOST_CHECK(expected_map == map1);
 
   // inner accumuate override
   const auto vec3 =
       knot::map<std::vector<int>>(std::vector<std::vector<int>>{{1, 3}, {2, 4}},
                                   [](const std::vector<int>& v) { return std::accumulate(v.begin(), v.end(), 0); });
   const std::vector<int> expected_acc{4, 6};
-  EXPECT_EQ(expected_acc, vec3);
+  BOOST_CHECK(expected_acc == vec3);
 }
 
-TEST(Map, maybe) {
+BOOST_AUTO_TEST_CASE(map_maybe) {
   const std::optional<P1> expected_opt{P1{1, 3}};
   const std::unique_ptr<P2> expected_ptr{new P2{1, 3}};
 
   const auto ptr = knot::map<std::unique_ptr<P2>>(expected_opt);
-  EXPECT_EQ(*expected_ptr, *ptr);
+  BOOST_CHECK(*expected_ptr == *ptr);
 
   const auto opt = knot::map<std::optional<P1>>(expected_ptr);
-  EXPECT_EQ(expected_opt, opt);
+  BOOST_CHECK(expected_opt == opt);
 
   const auto ptr2 = knot::map<std::unique_ptr<P2>>(std::optional<P1>{});
-  EXPECT_EQ(nullptr, ptr2);
+  BOOST_CHECK(nullptr == ptr2);
 
   const auto opt2 = knot::map<std::optional<P1>>(std::unique_ptr<P2>{});
-  EXPECT_EQ(std::nullopt, opt2);
+  BOOST_CHECK(std::nullopt == opt2);
 }
 
-TEST(Map, variant) {
+BOOST_AUTO_TEST_CASE(map_variant) {
   const auto var = knot::map<std::variant<float, int, char>>(std::variant<int>{1});
   const auto expected = std::variant<float, int, char>{1};
-  EXPECT_EQ(expected, var);
+  BOOST_CHECK(expected == var);
 
   const auto var_override = knot::map<std::variant<int, std::size_t>>(
       std::variant<std::string>{std::string{"abc"}}, [](const std::string& str) { return str.size(); });
   const auto expected_override = std::variant<int, std::size_t>{3ul};
-  EXPECT_EQ(expected_override, var_override);
+  BOOST_CHECK(expected_override == var_override);
 
   const auto var_map = knot::map<std::variant<P1, int>>(std::variant<std::pair<int, int>, int>{std::pair(1, 1)});
   const auto expected_map = std::variant<P1, int>{P1{1, 1}};
-  EXPECT_EQ(expected_map, var_map);
+  BOOST_CHECK(expected_map == var_map);
 }
 
-TEST(Map, override) {
+BOOST_AUTO_TEST_CASE(map_override) {
   const auto p2 = knot::map<P2>(std::make_pair(1, std::string{"abc"}),
                                 [](const std::string& str) { return static_cast<int>(str.size()); });
   const P2 expected_p2{1, 3};
 
-  EXPECT_EQ(expected_p2, p2);
+  BOOST_CHECK(expected_p2 == p2);
 }
 
 struct MoveOnly {
@@ -119,7 +119,7 @@ struct OuterMoveOnly {
   MoveOnly x;
 };
 
-TEST(Map, move_only) {
+BOOST_AUTO_TEST_CASE(map_move_only) {
   // identity
   knot::map<MoveOnly>(MoveOnly{});
 
@@ -152,15 +152,15 @@ struct ExplicitContructor {
   friend auto as_tie(const ExplicitContructor& e) { return std::tie(e.x); }
 };
 
-TEST(Map, explicit_constructor) { EXPECT_EQ(1, knot::map<ExplicitContructor>(std::tuple(1)).x); }
+BOOST_AUTO_TEST_CASE(map_explicit_constructor) { BOOST_CHECK(1 == knot::map<ExplicitContructor>(std::tuple(1)).x); }
 
-TEST(Map, non_tuple_tie) {
-  EXPECT_EQ(IntWrapper{5}, knot::map<IntWrapper>(5));
-  EXPECT_EQ(5, knot::map<int>(IntWrapper{5}));
+BOOST_AUTO_TEST_CASE(map_non_tuple_tie) {
+  BOOST_CHECK(IntWrapper{5} == knot::map<IntWrapper>(5));
+  BOOST_CHECK(5 == knot::map<int>(IntWrapper{5}));
 
-  EXPECT_EQ(VariantWrapper{0.5f}, knot::map<VariantWrapper>(std::variant<int, float>{0.5f}));
-  EXPECT_EQ((std::variant<int, float>{5}), (knot::map<std::variant<int, float>>(VariantWrapper{5})));
+  BOOST_CHECK(VariantWrapper{0.5f} == knot::map<VariantWrapper>(std::variant<int, float>{0.5f}));
+  BOOST_CHECK((std::variant<int, float>{5}) == (knot::map<std::variant<int, float>>(VariantWrapper{5})));
 
-  EXPECT_EQ((VecWrapper{{1, 2, 3}}), knot::map<VecWrapper>(std::vector<int>{1, 2, 3}));
-  EXPECT_EQ((std::vector<int>{1, 2, 3}), (knot::map<std::vector<int>>(VecWrapper{{1, 2, 3}})));
+  BOOST_CHECK((VecWrapper{{1, 2, 3}}) == knot::map<VecWrapper>(std::vector<int>{1, 2, 3}));
+  BOOST_CHECK((std::vector<int>{1, 2, 3}) == (knot::map<std::vector<int>>(VecWrapper{{1, 2, 3}})));
 }

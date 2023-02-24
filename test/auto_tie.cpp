@@ -1,7 +1,7 @@
 #include "knot/auto_as_tie.h"
 #include "knot/type_category.h"
 
-#include "gtest/gtest.h"
+#include <boost/test/unit_test.hpp>
 
 using knot::as_tie;
 using knot::is_tieable;
@@ -54,7 +54,7 @@ static_assert(is_tieable(Type<MemberFns>{}));
 
 }  // namespace
 
-TEST(AutoTie, forwarding) {
+BOOST_AUTO_TEST_CASE(auto_tie_forwarding) {
   ForwardTest s{std::make_unique<int>(5), 4};
 
   std::tuple<std::unique_ptr<int>&, float&> lvalue_tie = as_tie(s);
@@ -63,7 +63,7 @@ TEST(AutoTie, forwarding) {
   std::get<1>(lvalue_tie) = 1;
   std::unique_ptr<int> ptr = std::get<0>(std::move(rvalue_tie));
 
-  EXPECT_EQ(1, s.x);
-  EXPECT_EQ(nullptr, s.ptr);
-  EXPECT_EQ(5, *ptr);
+  BOOST_CHECK(1 == s.x);
+  BOOST_CHECK(nullptr == s.ptr);
+  BOOST_CHECK(5 == *ptr);
 }
