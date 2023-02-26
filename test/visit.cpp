@@ -230,11 +230,11 @@ BOOST_AUTO_TEST_CASE(accumulate_move) {
     std::make_unique<int>(4));
 
   const auto v = knot::accumulate(std::move(obj),
+    std::vector<std::unique_ptr<int>>{},
     [](auto v, std::unique_ptr<int> ptr) {
       v.push_back(std::move(ptr));
       return v;
-    },
-    std::vector<std::unique_ptr<int>>{});
+    });
 
   BOOST_REQUIRE(1 == v.size());
   BOOST_CHECK(v.front() && 4 == *v.front());
@@ -275,11 +275,11 @@ BOOST_AUTO_TEST_CASE(preorder_accumulate_move) {
     std::make_unique<int>(4));
 
   const auto v = knot::preorder_accumulate(std::move(obj),
+    std::vector<std::unique_ptr<int>>{},
     [](auto v, std::unique_ptr<int> ptr) {
       v.push_back(std::move(ptr));
       return v;
-    },
-    std::vector<std::unique_ptr<int>>{});
+    });
 
   BOOST_REQUIRE(5 == v.size());
   for(int i = 0; i < 5; i++) {

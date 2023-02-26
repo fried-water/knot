@@ -23,7 +23,7 @@ std::size_t area(const T& t) {
   if constexpr (is_tieable(type)) {
     return area(as_tie(t));
   } else if constexpr (is_supported(type)) {
-    return accumulate<std::size_t>(t, [](std::size_t acc, const auto& ele) { return acc + area(ele); });
+    return accumulate(t, std::size_t{0}, [](std::size_t acc, const auto& ele) { return acc + area(ele); });
   } else if constexpr (std::is_trivially_destructible_v<T>) {
     return 0;
   }
@@ -31,8 +31,8 @@ std::size_t area(const T& t) {
 
 template <typename T>
 std::size_t area(const std::vector<T>& v) {
-  return accumulate(
-      v, [](std::size_t acc, const auto& t) { return acc + area(t); }, v.capacity() * sizeof(T));
+  return accumulate(v, v.capacity() * sizeof(T),
+    [](std::size_t acc, const auto& t) { return acc + area(t); });
 }
 
 template <typename T>

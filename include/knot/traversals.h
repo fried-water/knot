@@ -8,26 +8,26 @@ namespace knot {
 template <typename T, typename F>
 void visit(T&&, F);
 
-template <typename Result, typename T, typename F>
-Result accumulate(T&& t, F f, Result acc = {});
+template <typename T, typename Result, typename F>
+Result accumulate(T&& t,  Result acc, F f);
 
 template <typename T, typename F>
 void preorder(T&&, F);
 
-template <typename Result, typename T, typename F>
-Result preorder_accumulate(T&& t, F f, Result acc = {});
+template <typename T, typename Result, typename F>
+Result preorder_accumulate(T&& t,  Result acc, F f);
 
 template <typename T, typename F>
 void postorder(T&&, F);
 
 template <typename T>
 std::size_t size(const T& t) {
-  return accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
+  return accumulate(t, std::size_t{0}, [](std::size_t acc, const auto&) { return acc + 1; });
 }
 
 template <typename T>
 std::size_t preorder_size(const T& t) {
-  return preorder_accumulate<std::size_t>(t, [](std::size_t acc, const auto&) { return acc + 1; });
+  return preorder_accumulate(t, std::size_t{0}, [](std::size_t acc, const auto&) { return acc + 1; });
 }
 
 namespace details {
@@ -68,8 +68,8 @@ void visit(T&& t, Visitor visitor) {
   }
 }
 
-template <typename Result, typename T, typename F>
-Result accumulate(T&& t, F f, Result acc) {
+template <typename T, typename Result, typename F>
+Result accumulate(T&& t, Result acc, F f) {
   visit(std::forward<T>(t), [&](auto&& v) {
     if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(v)>{})) {
       acc = f(std::move(acc), std::forward<decltype(v)>(v));
@@ -90,8 +90,8 @@ void preorder(T&& t, Visitor visitor) {
   visit(std::forward<T>(t), [&](auto&& v) { preorder(std::forward<decltype(v)>(v), visitor); });
 }
 
-template <typename Result, typename T, typename F>
-Result preorder_accumulate(T&& t, F f, Result acc) {
+template <typename T, typename Result, typename F>
+Result preorder_accumulate(T&& t, Result acc, F f) {
   preorder(std::forward<T>(t), [&](auto&& v) {
     if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(v)>{})) {
       acc = f(std::move(acc), std::forward<decltype(v)>(v));

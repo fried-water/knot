@@ -31,8 +31,8 @@ struct UnaryExpr {
 };
 
 int num_ops(const Expr& expr, const Op desired_op) {
-  return knot::preorder_accumulate(
-      expr, [desired_op](int acc, Op op) { return op == desired_op ? acc + 1 : acc; }, 0);
+  return knot::preorder_accumulate(expr, 0,
+    [desired_op](int acc, Op op) { return op == desired_op ? acc + 1 : acc; });
 }
 
 void dump_leaf_values(const Expr& expr) {

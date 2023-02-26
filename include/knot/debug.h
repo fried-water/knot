@@ -129,7 +129,7 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
     preorder(t, [&](const auto& t) {
       constexpr auto type = decay(Type<decltype(t)>{});
       if constexpr(has_names(type) && is_tieable(type)) {
-        count += preorder_accumulate<int>(names(type), [&](int acc, std::string_view sv) {
+        count += preorder_accumulate(names(type), 0, [&](int acc, std::string_view sv) {
           return acc + static_cast<int>(sv.size());
         });
       }

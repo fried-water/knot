@@ -29,7 +29,7 @@ std::size_t hash_value(const T& t) {
     std::array<std::byte, sizeof(T)> bytes;
     std::memcpy(bytes.data(), &t, sizeof(T));
 
-    return accumulate<std::size_t>(bytes, hash_combine);
+    return accumulate(bytes, std::size_t{}, hash_combine);
   } else if constexpr (is_supported(type)) {
     std::size_t initial_value = 0;
     if constexpr (category(type) == TypeCategory::Sum) {
@@ -38,8 +38,8 @@ std::size_t hash_value(const T& t) {
       initial_value = static_cast<std::size_t>(static_cast<bool>(t));
     }
 
-    return accumulate<std::size_t>(
-        t, [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); }, initial_value);
+    return accumulate(t, initial_value,
+      [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); });
   } else {
     return 0;
   }

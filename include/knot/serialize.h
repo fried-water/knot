@@ -137,17 +137,16 @@ IT serialize(const T& t, IT it) {
       }
     });
   } else if constexpr (category(type) == TypeCategory::Sum) {
-    return accumulate<IT>(
-        t, [&](IT it, const auto& ele) { return serialize(ele, it); }, serialize(t.index(), it));
+    return accumulate(t, serialize(t.index(), it),
+      [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Maybe) {
-    return accumulate<IT>(
-        t, [&](IT it, const auto& ele) { return serialize(ele, it); }, serialize(static_cast<bool>(t), it));
+    return accumulate(t, serialize(static_cast<bool>(t), it),
+      [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Range) {
-    return accumulate<IT>(
-        t, [&](IT it, const auto& ele) { return serialize(ele, it); }, serialize(t.size(), it));
+    return accumulate(t, serialize(t.size(), it),
+      [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Product) {
-    return accumulate<IT>(
-        t, [&](IT it, const auto& ele) { return serialize(ele, it); }, it);
+    return accumulate(t, it, [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else {
     return it;
   }
