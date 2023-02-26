@@ -9,16 +9,16 @@ template <typename T, typename F>
 void visit(T&&, F);
 
 template <typename Result, typename T, typename F>
-Result accumulate(const T& t, F f, Result acc = {});
+Result accumulate(T&& t, F f, Result acc = {});
 
 template <typename T, typename F>
-void preorder(const T&, F);
+void preorder(T&&, F);
 
 template <typename Result, typename T, typename F>
-Result preorder_accumulate(const T& t, F f, Result acc = {});
+Result preorder_accumulate(T&& t, F f, Result acc = {});
 
 template <typename T, typename F>
-void postorder(const T&, F);
+void postorder(T&&, F);
 
 template <typename T>
 std::size_t size(const T& t) {
@@ -69,43 +69,43 @@ void visit(T&& t, Visitor visitor) {
 }
 
 template <typename Result, typename T, typename F>
-Result accumulate(const T& t, F f, Result acc) {
-  visit(t, [&](const auto& value) {
-    if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(value)>{})) {
-      acc = f(std::move(acc), value);
+Result accumulate(T&& t, F f, Result acc) {
+  visit(std::forward<T>(t), [&](auto&& v) {
+    if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(v)>{})) {
+      acc = f(std::move(acc), std::forward<decltype(v)>(v));
     }
   });
   return acc;
 }
 
 template <typename T, typename Visitor>
-void preorder(const T& t, Visitor visitor) {
+void preorder(T&& t, Visitor visitor) {
   // visit the value, if the function returns a bool, stop recursing on false
   if constexpr (Type<bool>{} == invoke_result(Type<Visitor>{}, TypeList<T>{})) {
-    if (!visitor(t)) return;
+    if (!visitor(std::forward<T>(t))) return;
   } else if constexpr (is_invocable(Type<Visitor>{}, TypeList<T>{})) {
-    visitor(t);
+    visitor(std::forward<T>(t));
   }
 
-  visit(t, [&](const auto& val) { preorder(val, visitor); });
+  visit(std::forward<T>(t), [&](auto&& v) { preorder(std::forward<decltype(v)>(v), visitor); });
 }
 
 template <typename Result, typename T, typename F>
-Result preorder_accumulate(const T& t, F f, Result acc) {
-  preorder(t, [&](const auto& value) {
-    if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(value)>{})) {
-      acc = f(std::move(acc), value);
+Result preorder_accumulate(T&& t, F f, Result acc) {
+  preorder(std::forward<T>(t), [&](auto&& v) {
+    if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(v)>{})) {
+      acc = f(std::move(acc), std::forward<decltype(v)>(v));
     }
   });
   return acc;
 }
 
 template <typename T, typename Visitor>
-void postorder(const T& t, Visitor visitor) {
-  visit(t, [&](const auto& val) { postorder(val, visitor); });
+void postorder(T&& t, Visitor visitor) {
+  visit(std::forward<T>(t), [&](auto&& v) { postorder(std::forward<decltype(v)>(v), visitor); });
 
   if constexpr (is_invocable(Type<Visitor>{}, TypeList<T>{})) {
-    visitor(t);
+    visitor(std::forward<T>(t));
   }
 }
 
