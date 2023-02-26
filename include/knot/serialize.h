@@ -79,15 +79,15 @@ std::optional<std::pair<std::tuple<Ts...>, IT>> tuple_deserialize(Type<std::tupl
     constexpr auto tl = typelist(Type<Ts>{}...);
 
     return make_monad(deserialize_partial(head(tl), begin, end))
-      .and_then([&](auto&& first, IT begin) {
-        return make_monad(tuple_deserialize(as_tuple(tail(tl)), begin, end))
-          .map([&](auto&& rest, IT begin) {
-            return std::pair(std::tuple<Ts...>{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))},
-                            begin);
-          })
-          .opt;
-      })
-      .opt;
+        .and_then([&](auto&& first, IT begin) {
+          return make_monad(tuple_deserialize(as_tuple(tail(tl)), begin, end))
+              .map([&](auto&& rest, IT begin) {
+                return std::pair(std::tuple<Ts...>{std::tuple_cat(std::make_tuple(std::move(first)), std::move(rest))},
+                                 begin);
+              })
+              .opt;
+        })
+        .opt;
   }
 }
 
@@ -137,14 +137,12 @@ IT serialize(const T& t, IT it) {
       }
     });
   } else if constexpr (category(type) == TypeCategory::Sum) {
-    return accumulate(t, serialize(t.index(), it),
-      [&](IT it, const auto& ele) { return serialize(ele, it); });
+    return accumulate(t, serialize(t.index(), it), [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Maybe) {
     return accumulate(t, serialize(static_cast<bool>(t), it),
-      [&](IT it, const auto& ele) { return serialize(ele, it); });
+                      [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Range) {
-    return accumulate(t, serialize(t.size(), it),
-      [&](IT it, const auto& ele) { return serialize(ele, it); });
+    return accumulate(t, serialize(t.size(), it), [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else if constexpr (category(type) == TypeCategory::Product) {
     return accumulate(t, it, [&](IT it, const auto& ele) { return serialize(ele, it); });
   } else {

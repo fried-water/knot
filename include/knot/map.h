@@ -56,10 +56,11 @@ Result map(Type<Result> const_result_type, T&& t, F f) {
           const auto var_type = decay(Type<decltype(val)>{});
           if constexpr (is_invocable(Type<F>{}, typelist(var_type))) {
             return f(std::forward<decltype(val)>(val));
-          } else if constexpr(contains(as_typelist(result_type), var_type)) {
+          } else if constexpr (contains(as_typelist(result_type), var_type)) {
             return std::forward<decltype(val)>(val);
           } else {
-            return map(get<*idx_of(as_typelist(type), var_type)>(as_typelist(result_type)), std::forward<decltype(val)>(val), f);
+            return map(get<*idx_of(as_typelist(type), var_type)>(as_typelist(result_type)),
+                       std::forward<decltype(val)>(val), f);
           }
         },
         std::forward<T>(t));

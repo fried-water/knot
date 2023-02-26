@@ -39,7 +39,7 @@ std::size_t hash_value(const T& t) {
     }
 
     return accumulate(t, initial_value,
-      [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); });
+                      [&](std::size_t acc, const auto& ele) { return hash_combine(acc, hash_value(ele)); });
   } else {
     return 0;
   }

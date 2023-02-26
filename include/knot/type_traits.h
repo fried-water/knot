@@ -78,30 +78,34 @@ constexpr auto tail(TypeList<T, Ts...>) {
   return TypeList<Ts...>{};
 }
 
-template<int I, typename T>
-constexpr std::optional<int> idx_of_helper(TypeList<>, Type<T>) { return std::nullopt; }
+template <int I, typename T>
+constexpr std::optional<int> idx_of_helper(TypeList<>, Type<T>) {
+  return std::nullopt;
+}
 
-template<int I, typename T, typename... Ts>
+template <int I, typename T, typename... Ts>
 constexpr std::optional<int> idx_of_helper(TypeList<Ts...> ts, Type<T> t) {
   return t == head(ts) ? std::optional(I) : idx_of_helper<I + 1>(tail(ts), t);
 }
 
-template<typename T, typename... Ts>
+template <typename T, typename... Ts>
 constexpr std::optional<int> idx_of(TypeList<Ts...> ts, Type<T> t) {
   return idx_of_helper<0>(ts, t);
 }
 
-template<typename T, typename... Ts>
+template <typename T, typename... Ts>
 constexpr bool contains(TypeList<Ts...> ts, Type<T> t) {
   return idx_of(ts, t).has_value();
 }
 
-template<int I>
-constexpr auto get(TypeList<>) { return NotAType{}; }
+template <int I>
+constexpr auto get(TypeList<>) {
+  return NotAType{};
+}
 
-template<int I, typename... Ts>
+template <int I, typename... Ts>
 constexpr auto get(TypeList<Ts...> ts) {
-  if constexpr(I == 0) {
+  if constexpr (I == 0) {
     return head(ts);
   } else {
     return get<I - 1>(tail(ts));

@@ -9,13 +9,13 @@ template <typename T, typename F>
 void visit(T&&, F);
 
 template <typename T, typename Result, typename F>
-Result accumulate(T&& t,  Result acc, F f);
+Result accumulate(T&& t, Result acc, F f);
 
 template <typename T, typename F>
 void preorder(T&&, F);
 
 template <typename T, typename Result, typename F>
-Result preorder_accumulate(T&& t,  Result acc, F f);
+Result preorder_accumulate(T&& t, Result acc, F f);
 
 template <typename T, typename F>
 void postorder(T&&, F);
@@ -59,7 +59,7 @@ void visit(T&& t, Visitor visitor) {
     if (static_cast<bool>(t)) try_visit(*std::forward<T>(t));
   } else if constexpr (category(type) == TypeCategory::Range) {
     for (auto&& val : t) {
-      if constexpr(is_ref(Type<T>{})) {
+      if constexpr (is_ref(Type<T>{})) {
         try_visit(val);
       } else {
         try_visit(std::move(val));

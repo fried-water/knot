@@ -31,8 +31,7 @@ std::size_t area(const T& t) {
 
 template <typename T>
 std::size_t area(const std::vector<T>& v) {
-  return accumulate(v, v.capacity() * sizeof(T),
-    [](std::size_t acc, const auto& t) { return acc + area(t); });
+  return accumulate(v, v.capacity() * sizeof(T), [](std::size_t acc, const auto& t) { return acc + area(t); });
 }
 
 template <typename T>

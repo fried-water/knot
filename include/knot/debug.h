@@ -34,7 +34,7 @@ struct Names {
   constexpr explicit Names(std::string_view name) : name(name) {}
 
   constexpr explicit Names(std::string_view name, const std::string_view (&members_)[N]) : name(name) {
-    for(size_t i = 0; i < N; i++) {
+    for (size_t i = 0; i < N; i++) {
       members[i] = members_[i];
     }
   }
@@ -48,8 +48,8 @@ struct Names {
   std::array<std::string_view, N> members = {};
 };
 
-Names() -> Names<0>;
-Names(std::string_view) -> Names<0>;
+Names()->Names<0>;
+Names(std::string_view)->Names<0>;
 
 constexpr inline auto has_names = is_valid([](auto&& t) -> decltype(names(decay(Type<decltype(t)>{}))) {});
 
@@ -62,14 +62,9 @@ std::string debug(const T& t, std::optional<MultiLine> multi) {
 
 namespace {
 
-template<typename T>
-std::ostream& debug_list(
-  std::ostream& os,
-  const T& t,
-  std::optional<MultiLine> multi,
-  bool include_size = false,
-  const std::string_view* names = nullptr)
-{
+template <typename T>
+std::ostream& debug_list(std::ostream& os, const T& t, std::optional<MultiLine> multi, bool include_size = false,
+                         const std::string_view* names = nullptr) {
   constexpr Type<T> type = {};
 
   const auto size = knot::size(t);
@@ -78,20 +73,19 @@ std::ostream& debug_list(
   const int indentation = multi ? multi->indentation : 0;
   const int tab_size = multi ? multi->tab_size : 0;
 
-  const auto next_multi = multi
-    ? std::optional(MultiLine{multi->collapse_threshold, tab_size, indentation + tab_size})
-    : std::nullopt;
+  const auto next_multi =
+      multi ? std::optional(MultiLine{multi->collapse_threshold, tab_size, indentation + tab_size}) : std::nullopt;
 
   const auto indent = [&](int amount) {
-    for(int i = 0; i < amount; i++) os << ' ';
+    for (int i = 0; i < amount; i++) os << ' ';
   };
 
   os << (category(type) == TypeCategory::Product ? '(' : '[');
 
-  if(include_size) {
+  if (include_size) {
     os << size << ';';
-    if(size > 0 || multi) os << delimeter;
-  } else if(multi) {
+    if (size > 0 || multi) os << delimeter;
+  } else if (multi) {
     os << '\n';
   }
 
@@ -100,15 +94,15 @@ std::ostream& debug_list(
   visit(t, [&](const auto& inner) {
     indent(indentation + tab_size);
     debug(names == nullptr ? os : os << names[i] << ": ", inner, next_multi);
-    if(++i < size) os << ',';
-    if(i < size || multi) os << delimeter;
+    if (++i < size) os << ',';
+    if (i < size || multi) os << delimeter;
   });
 
   indent(indentation);
   return os << (category(type) == TypeCategory::Product ? ')' : ']');
 }
 
-}
+}  // namespace
 
 template <typename T>
 std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi) {
@@ -124,14 +118,13 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
 
   static_assert(is_supported(type) || use_overloads);
 
-  if(multi) {
+  if (multi) {
     int count = 0;
     preorder(t, [&](const auto& t) {
       constexpr auto type = decay(Type<decltype(t)>{});
-      if constexpr(has_names(type) && is_tieable(type)) {
-        count += preorder_accumulate(names(type), 0, [&](int acc, std::string_view sv) {
-          return acc + static_cast<int>(sv.size());
-        });
+      if constexpr (has_names(type) && is_tieable(type)) {
+        count += preorder_accumulate(names(type), 0,
+                                     [&](int acc, std::string_view sv) { return acc + static_cast<int>(sv.size()); });
       }
 
       return ++count <= multi->collapse_threshold;
@@ -153,7 +146,7 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
     if constexpr (is_tuple_like(tie_type(type))) {
       static_assert(t_names.member_count() == 0 || t_names.member_count() == size(as_typelist(tie_type(type))));
 
-      if constexpr(t_names.member_count() == 0) {
+      if constexpr (t_names.member_count() == 0) {
         debug_list(os, as_tie(t), multi);
       } else {
         debug_list(os, as_tie(t), multi, false, t_names.members.data());
@@ -164,15 +157,15 @@ std::ostream& debug(std::ostream& os, const T& t, std::optional<MultiLine> multi
   } else if constexpr (is_arithmetic(type)) {
     os << t;
   } else if constexpr (is_enum(type)) {
-    const auto idx = static_cast<std::underlying_type_t<T>>(t); 
-    if constexpr(has_names(type)) {
+    const auto idx = static_cast<std::underlying_type_t<T>>(t);
+    if constexpr (has_names(type)) {
       constexpr auto t_names = names(type);
-      if(static_cast<std::size_t>(idx) < t_names.members.size()) {
-        if constexpr(!t_names.name.empty()) {
+      if (static_cast<std::size_t>(idx) < t_names.members.size()) {
+        if constexpr (!t_names.name.empty()) {
           os << t_names.name << "::";
         }
-        os <<  t_names.members[idx];
-      } else if constexpr(!t_names.name.empty()) {
+        os << t_names.members[idx];
+      } else if constexpr (!t_names.name.empty()) {
         os << t_names.name << "(" << idx << ")";
       } else {
         os << "invalid_enum(" << idx << ")";

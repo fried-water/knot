@@ -84,7 +84,9 @@ BOOST_AUTO_TEST_CASE(area_sum) {
   BOOST_CHECK(5 == knot::area(std::variant<int, Memory>(Memory(5))));
 }
 
-BOOST_AUTO_TEST_CASE(area_array) { BOOST_CHECK(17 == knot::area(std::array<Memory, 3>{Memory(10), Memory(5), Memory(2)})); }
+BOOST_AUTO_TEST_CASE(area_array) {
+  BOOST_CHECK(17 == knot::area(std::array<Memory, 3>{Memory(10), Memory(5), Memory(2)}));
+}
 
 BOOST_AUTO_TEST_CASE(area_trivially_destructible) { BOOST_CHECK(0 == knot::area(TriviallyDestructibleUntieable{})); }
 

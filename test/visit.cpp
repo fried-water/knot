@@ -223,18 +223,14 @@ BOOST_AUTO_TEST_CASE(accumulate_move) {
   in.push_back(std::make_unique<int>(0));
   in.push_back(std::make_unique<int>(1));
 
-  auto obj = std::tuple(
-    std::move(in),
-    std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
-    std::optional(std::make_unique<int>(3)),
-    std::make_unique<int>(4));
+  auto obj = std::tuple(std::move(in), std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
+                        std::optional(std::make_unique<int>(3)), std::make_unique<int>(4));
 
-  const auto v = knot::accumulate(std::move(obj),
-    std::vector<std::unique_ptr<int>>{},
-    [](auto v, std::unique_ptr<int> ptr) {
-      v.push_back(std::move(ptr));
-      return v;
-    });
+  const auto v =
+      knot::accumulate(std::move(obj), std::vector<std::unique_ptr<int>>{}, [](auto v, std::unique_ptr<int> ptr) {
+        v.push_back(std::move(ptr));
+        return v;
+      });
 
   BOOST_REQUIRE(1 == v.size());
   BOOST_CHECK(v.front() && 4 == *v.front());
@@ -245,20 +241,14 @@ BOOST_AUTO_TEST_CASE(preorder_move) {
   in.push_back(std::make_unique<int>(0));
   in.push_back(std::make_unique<int>(1));
 
-  auto obj = std::tuple(
-    std::move(in),
-    std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
-    std::optional(std::make_unique<int>(3)),
-    std::make_unique<int>(4));
+  auto obj = std::tuple(std::move(in), std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
+                        std::optional(std::make_unique<int>(3)), std::make_unique<int>(4));
 
   std::vector<std::unique_ptr<int>> v;
-  knot::preorder(std::move(obj),
-    [&](std::unique_ptr<int> ptr) {
-      v.push_back(std::move(ptr));
-    });
+  knot::preorder(std::move(obj), [&](std::unique_ptr<int> ptr) { v.push_back(std::move(ptr)); });
 
   BOOST_REQUIRE(5 == v.size());
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     BOOST_CHECK(v[i] && *v[i] == i);
   }
 }
@@ -268,21 +258,17 @@ BOOST_AUTO_TEST_CASE(preorder_accumulate_move) {
   in.push_back(std::make_unique<int>(0));
   in.push_back(std::make_unique<int>(1));
 
-  auto obj = std::tuple(
-    std::move(in),
-    std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
-    std::optional(std::make_unique<int>(3)),
-    std::make_unique<int>(4));
+  auto obj = std::tuple(std::move(in), std::variant<int, std::unique_ptr<int>>{std::make_unique<int>(2)},
+                        std::optional(std::make_unique<int>(3)), std::make_unique<int>(4));
 
-  const auto v = knot::preorder_accumulate(std::move(obj),
-    std::vector<std::unique_ptr<int>>{},
-    [](auto v, std::unique_ptr<int> ptr) {
-      v.push_back(std::move(ptr));
-      return v;
-    });
+  const auto v = knot::preorder_accumulate(std::move(obj), std::vector<std::unique_ptr<int>>{},
+                                           [](auto v, std::unique_ptr<int> ptr) {
+                                             v.push_back(std::move(ptr));
+                                             return v;
+                                           });
 
   BOOST_REQUIRE(5 == v.size());
-  for(int i = 0; i < 5; i++) {
+  for (int i = 0; i < 5; i++) {
     BOOST_CHECK(v[i] && *v[i] == i);
   }
 }

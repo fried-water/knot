@@ -62,7 +62,7 @@ BOOST_AUTO_TEST_CASE(debug_variant) {
   BOOST_CHECK("5" == knot::debug(std::variant<int, Point, std::vector<std::string>>(5)));
   BOOST_CHECK("(45, 89)" == knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));
   BOOST_CHECK("[3; a, b, c]" ==
-            knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
+              knot::debug(std::variant<int, Point, std::vector<std::string>>(std::vector<std::string>{"a", "b", "c"})));
 }
 
 BOOST_AUTO_TEST_CASE(debug_non_tuple_tieable) {
@@ -77,7 +77,9 @@ struct MyNamedStruct {
   int member1;
   int member2;
 
-  friend constexpr auto names(knot::Type<MyNamedStruct>) { return knot::Names("MyNamedStruct", {"member1", "member2"}); }
+  friend constexpr auto names(knot::Type<MyNamedStruct>) {
+    return knot::Names("MyNamedStruct", {"member1", "member2"});
+  }
 };
 
 struct MySemiNamedStruct {
@@ -106,11 +108,17 @@ constexpr auto names(knot::Type<NamedEnum>) { return knot::Names("NamedEnum", {"
 
 }  // namespace
 
-BOOST_AUTO_TEST_CASE(debug_named_struct) { BOOST_CHECK("MyNamedStruct(member1: 5, member2: 3)" == knot::debug(MyNamedStruct{5, 3})); }
+BOOST_AUTO_TEST_CASE(debug_named_struct) {
+  BOOST_CHECK("MyNamedStruct(member1: 5, member2: 3)" == knot::debug(MyNamedStruct{5, 3}));
+}
 
-BOOST_AUTO_TEST_CASE(debug_semi_named_struct) { BOOST_CHECK("MySemiNamedStruct(5, 3)" == knot::debug(MySemiNamedStruct{5, 3})); }
+BOOST_AUTO_TEST_CASE(debug_semi_named_struct) {
+  BOOST_CHECK("MySemiNamedStruct(5, 3)" == knot::debug(MySemiNamedStruct{5, 3}));
+}
 
-BOOST_AUTO_TEST_CASE(debug_named_aliased_struct) { BOOST_CHECK("MyNamedAliasedStruct(5)" == knot::debug(MyNamedAliasedStruct{5})); }
+BOOST_AUTO_TEST_CASE(debug_named_aliased_struct) {
+  BOOST_CHECK("MyNamedAliasedStruct(5)" == knot::debug(MyNamedAliasedStruct{5}));
+}
 
 BOOST_AUTO_TEST_CASE(debug_multiline_range) {
   BOOST_CHECK("[0;]" == knot::debug(std::vector<int>{}, knot::MultiLine{}));
@@ -118,7 +126,7 @@ BOOST_AUTO_TEST_CASE(debug_multiline_range) {
   BOOST_CHECK("[1;\n  2\n]" == knot::debug(std::vector<int>{2}, knot::MultiLine{1}));
   BOOST_CHECK("[1; 2]" == knot::debug(std::vector<int>{2}, knot::MultiLine{2}));
   BOOST_CHECK("[4;\n [0;],\n [1; 1],\n [2; 1, 2],\n [3;\n  1,\n  2,\n  3\n ]\n]" ==
-    knot::debug(std::vector<std::vector<int>>{{}, {1}, {1, 2}, {1, 2, 3}}, knot::MultiLine{3, 1}));
+              knot::debug(std::vector<std::vector<int>>{{}, {1}, {1, 2}, {1, 2, 3}}, knot::MultiLine{3, 1}));
 }
 
 BOOST_AUTO_TEST_CASE(debug_multiline_struct) {
@@ -128,10 +136,12 @@ BOOST_AUTO_TEST_CASE(debug_multiline_struct) {
   BOOST_CHECK("(\n  a,\n  1\n)" == knot::debug(std::tuple('a', 1), knot::MultiLine{2}));
   BOOST_CHECK("(a, 1)" == knot::debug(std::tuple('a', 1), knot::MultiLine{3}));
 
-  BOOST_CHECK("MyNamedStruct(\n  member1: 0,\n  member2: 1\n)" == knot::debug(MyNamedStruct{0, 1}, knot::MultiLine{29}));
+  BOOST_CHECK("MyNamedStruct(\n  member1: 0,\n  member2: 1\n)" ==
+              knot::debug(MyNamedStruct{0, 1}, knot::MultiLine{29}));
   BOOST_CHECK("MyNamedStruct(member1: 0, member2: 1)" == knot::debug(MyNamedStruct{0, 1}, knot::MultiLine{30}));
 
-  BOOST_CHECK("(\n abc,\n (),\n (\n  1,\n  2\n )\n)" == knot::debug(std::tuple("abc", std::tuple(), std::tuple(1, 2)), knot::MultiLine{2, 1}));
+  BOOST_CHECK("(\n abc,\n (),\n (\n  1,\n  2\n )\n)" ==
+              knot::debug(std::tuple("abc", std::tuple(), std::tuple(1, 2)), knot::MultiLine{2, 1}));
 }
 
 BOOST_AUTO_TEST_CASE(debug_named_enum) {
