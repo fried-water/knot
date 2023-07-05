@@ -78,6 +78,22 @@ constexpr auto tail(TypeList<T, Ts...>) {
   return TypeList<Ts...>{};
 }
 
+template <typename... T1s, typename... T2s>
+constexpr bool operator==(TypeList<T1s...> lhs, TypeList<T2s...> rhs) {
+  if constexpr(size(lhs) != size(rhs)) {
+    return false;
+  } else if constexpr(size(lhs) == 0) {
+    return true;
+  } else {
+    return head(lhs) == head(rhs) && tail(lhs) == tail(rhs);
+  }
+}
+
+template <typename... T1s, typename... T2s>
+constexpr bool operator!=(TypeList<T1s...> lhs, TypeList<T2s...> rhs) {
+  return !(lhs == rhs);
+}
+
 template <int I, typename T>
 constexpr std::optional<int> idx_of_helper(TypeList<>, Type<T>) {
   return std::nullopt;
