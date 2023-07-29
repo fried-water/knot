@@ -273,6 +273,19 @@ BOOST_AUTO_TEST_CASE(preorder_accumulate_move) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(preorder_move_dont_traverse) {
+  knot::preorder(std::tuple<int>{1}, Overloaded{[](std::tuple<int>) {}, [](int) { BOOST_REQUIRE(false); }});
+
+  int visited = false;
+  knot::preorder(std::tuple<int>{1}, [&](int) { visited = true; });
+  BOOST_CHECK(visited);
+}
+
+BOOST_AUTO_TEST_CASE(preorder_accumulate_move_dont_traverse) {
+  BOOST_CHECK_EQUAL(1, knot::preorder_accumulate(std::tuple<int>{1}, 0, [](int acc, auto) { return acc + 1; }));
+  BOOST_CHECK_EQUAL(1, knot::preorder_accumulate(std::tuple<int>{1}, 0, [](int acc, int) { return acc + 1; }));
+}
+
 BOOST_AUTO_TEST_CASE(postorder_primitive) { BOOST_CHECK(std::vector<SomeType>{5} == gather_postorder_objects(5)); }
 
 BOOST_AUTO_TEST_CASE(postorder_basic_struct) {

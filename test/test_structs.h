@@ -9,6 +9,14 @@
 #include <unordered_set>
 #include <vector>
 
+template <class... Ts>
+struct Overloaded : Ts... {
+  using Ts::operator()...;
+};
+
+template <class... Ts>
+Overloaded(Ts...) -> Overloaded<Ts...>;
+
 template <typename First, typename Second>
 struct Pair {
   First first;

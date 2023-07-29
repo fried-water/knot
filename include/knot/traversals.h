@@ -85,6 +85,7 @@ void preorder(T&& t, Visitor visitor) {
     if (!visitor(std::forward<T>(t))) return;
   } else if constexpr (is_invocable(Type<Visitor>{}, TypeList<T>{})) {
     visitor(std::forward<T>(t));
+    if constexpr (!is_ref(Type<T>{})) return;
   }
 
   visit(std::forward<T>(t), [&](auto&& v) { preorder(std::forward<decltype(v)>(v), visitor); });
@@ -95,6 +96,9 @@ Result preorder_accumulate(T&& t, Result acc, F f) {
   preorder(std::forward<T>(t), [&](auto&& v) {
     if constexpr (Type<Result>{} == invoke_result(Type<F>{}, TypeList<Result, decltype(v)>{})) {
       acc = f(std::move(acc), std::forward<decltype(v)>(v));
+      return is_ref(Type<T>{});
+    } else {
+      return true;
     }
   });
   return acc;
