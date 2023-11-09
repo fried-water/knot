@@ -7,10 +7,14 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <optional>
+#include <tuple>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace knot {
@@ -126,7 +130,7 @@ IT serialize(const T& t, IT it) {
 
   if constexpr (is_tieable(type)) {
     return serialize(as_tie(t), it);
-  } else if constexpr (category(type) == TypeCategory::Primative) {
+  } else if constexpr (category(type) == TypeCategory::Primitive) {
     std::array<std::byte, sizeof(T)> array;
     std::memcpy(array.data(), &t, sizeof(T));
     return std::transform(array.begin(), array.end(), it, [](std::byte b) {
@@ -173,7 +177,7 @@ std::optional<std::pair<Outer, IT>> deserialize_partial(Type<Outer> outer_type, 
     return details::make_monad(deserialize_partial(tie_type(type), begin, end))
         .map([](auto tied_type, IT begin) { return std::pair(map<T>(std::move(tied_type)), begin); })
         .opt;
-  } else if constexpr (category(type) == TypeCategory::Primative) {
+  } else if constexpr (category(type) == TypeCategory::Primitive) {
     if (std::distance(begin, end) < sizeof(T)) return std::nullopt;
 
     std::array<std::byte, sizeof(T)> array;

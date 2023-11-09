@@ -3,6 +3,12 @@
 #include "knot/type_category.h"
 #include "knot/type_traits.h"
 
+#include <cstddef>
+#include <optional>
+#include <tuple>
+#include <utility>
+#include <variant>
+
 namespace knot {
 
 template <typename Result, typename T, typename F = std::tuple<>>
@@ -46,7 +52,7 @@ Result map(Type<Result> const_result_type, T&& t, F f) {
     } else {
       return Result{map(tie_type(result_type), std::forward<T>(t), f)};
     }
-  } else if constexpr (category(result_type) == TypeCategory::Primative) {
+  } else if constexpr (category(result_type) == TypeCategory::Primitive) {
     return static_cast<Result>(t);
   } else if constexpr (category(result_type) == TypeCategory::Product) {
     return details::map_tuple<Result>(result_type, std::forward<T>(t), f, idx_seq(result_type));

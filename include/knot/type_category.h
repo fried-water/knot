@@ -10,7 +10,7 @@
 
 namespace knot {
 
-enum class TypeCategory : uint8_t { Unknown, Primative, Range, Product, Sum, Maybe };
+enum class TypeCategory : uint8_t { Unknown, Primitive, Range, Product, Sum, Maybe };
 
 constexpr inline auto is_tieable = is_valid([](auto&& t) -> decltype(as_tie(t)) {});
 
@@ -69,7 +69,7 @@ constexpr TypeCategory category(Type<T> t) {
   if constexpr (is_tieable(t)) {
     return category(tie_type(t));
   } else if constexpr (is_enum(t) || is_arithmetic(t)) {
-    return TypeCategory::Primative;
+    return TypeCategory::Primitive;
   } else if constexpr (is_range(t)) {
     return TypeCategory::Range;
   } else if constexpr (is_tuple_like(t)) {

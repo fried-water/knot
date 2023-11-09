@@ -3,7 +3,9 @@
 #include <array>
 #include <optional>
 #include <type_traits>
+#include <tuple>
 #include <utility>
+#include <variant>
 
 namespace knot {
 

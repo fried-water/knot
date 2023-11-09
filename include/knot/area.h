@@ -2,6 +2,11 @@
 
 #include "knot/traversals.h"
 #include "knot/type_category.h"
+#include "knot/type_traits.h"
+
+#include <cstddef>
+#include <vector>
+#include <memory>
 
 namespace knot {
 

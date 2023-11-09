@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <functional>
 
 namespace knot {
 
@@ -19,17 +20,12 @@ std::size_t hash_value(const T& t) {
 
   constexpr Type<T> type = {};
 
-  static_assert(is_supported(type) || std::has_unique_object_representations_v<T>, "Unsupported type in hash");
+  static_assert(is_supported(type), "Unsupported type in hash");
 
   if constexpr (is_tieable(type)) {
     return hash_value(as_tie(t));
-  } else if constexpr (is_valid([](auto&& t) -> decltype(std::hash<T>{}(t)) {})(type)) {
+  } else if constexpr (category(type) == TypeCategory::Primitive || is_raw_pointer(type)) {
     return std::hash<T>{}(t);
-  } else if constexpr (std::has_unique_object_representations_v<T>) {
-    std::array<std::byte, sizeof(T)> bytes;
-    std::memcpy(bytes.data(), &t, sizeof(T));
-
-    return accumulate(bytes, std::size_t{}, hash_combine);
   } else if constexpr (is_supported(type)) {
     std::size_t initial_value = 0;
     if constexpr (category(type) == TypeCategory::Sum) {
@@ -49,7 +45,7 @@ std::size_t hash_value(const T& t) {
 struct Hash {
   template <typename T>
   std::size_t operator()(const T& t) const noexcept {
-    return knot::hash_value(t);
+    return hash_value(t);
   }
 };
 

@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <unordered_set>
+#include <iostream>
 
 namespace {
 
@@ -37,19 +38,20 @@ BOOST_AUTO_TEST_CASE(hash_basic_optional) {
   BOOST_CHECK(expected_hash == knot::hash_value(p));
 
   BOOST_CHECK(0 == knot::hash_value(std::optional<Point>{}));
-
-  // This falls back on std hash
-  BOOST_CHECK(0 == knot::hash_value(std::optional<int>{0}));
+  BOOST_CHECK(0 == knot::hash_value(std::optional<int>{}));
 }
 
 BOOST_AUTO_TEST_CASE(hash_basic_unique_ptr) {
   const auto p = std::make_unique<Point>(Point{45, 89});
-  const std::size_t expected_hash = std::hash<std::unique_ptr<Point>>{}(p);
-  BOOST_CHECK(expected_hash == knot::hash_value(p));
+  BOOST_CHECK(knot::hash_value(std::optional(Point{45, 89})) == knot::hash_value(p));
 
-  // These fall back on std hash
-  BOOST_CHECK(0 != knot::hash_value(std::unique_ptr<Point>()));
+  BOOST_CHECK(0 == knot::hash_value(std::unique_ptr<Point>()));
   BOOST_CHECK(0 != knot::hash_value(std::make_unique<int>(0)));
+}
+
+BOOST_AUTO_TEST_CASE(hash_basic_ptr) {
+  const void* ptr = (const void*)0xdeafbeef;
+  BOOST_CHECK(std::hash<const void*>{}(ptr) == knot::hash_value(ptr));
 }
 
 BOOST_AUTO_TEST_CASE(hash_basic_range) {
