@@ -58,8 +58,14 @@ constexpr decltype(auto) aliasing_forward(U&& obj) noexcept {
 
 template <typename T>
 constexpr bool is_auto_tieable(Type<T> t) {
-  return is_aggregate(t) && arity(t) <= 16 && !not_knot::is_user_tieable(t) && !is_array(t) &&
-         !details::has_any_base<std::decay_t<T>>::value;
+  if constexpr(is_aggregate(t)) {
+      return arity(t) <= 16
+        && !not_knot::is_user_tieable(t)
+        && !is_array(t)
+        && !has_any_base<std::decay_t<T>>::value;
+  } else {
+    return false;
+  }
 }
 
 }  // namespace details
