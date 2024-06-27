@@ -65,6 +65,12 @@ BOOST_AUTO_TEST_CASE(hash_basic_range) {
   BOOST_CHECK(knot::hash_value(std::vector<int>{0}) != knot::hash_value(std::vector<int>{}));
 }
 
+BOOST_AUTO_TEST_CASE(hash_vec_bool) {
+  const std::vector<bool> vec{false, true};
+  const std::size_t expected_hash = knot::hash_value(std::array<bool, 2>{false, true});
+  BOOST_CHECK(expected_hash == knot::hash_value(vec));
+}
+
 BOOST_AUTO_TEST_CASE(hash_basic_variant) {
   const std::variant<int, Point> var = Point{45, 89};
   const std::size_t expected_hash = hash_combine(1, knot::hash_value(Point{45, 89}));

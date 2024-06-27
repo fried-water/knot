@@ -64,6 +64,25 @@ BOOST_AUTO_TEST_CASE(visit_range) {
   BOOST_CHECK(expected == gather_objects(vec));
 }
 
+BOOST_AUTO_TEST_CASE(visit_vec_bool) {
+  const auto gather = [](auto&& vec) {
+    std::vector<bool> out;
+    knot::visit(std::forward<decltype(vec)>(vec), [&](auto v) {
+      static_assert(knot::Type<decltype(v)>{} == knot::Type<bool>{});
+      out.push_back(v);
+    });
+    return out;
+  };
+
+  std::vector<bool> vec{true, false};
+  const std::vector<bool> cvec{true, false};
+
+  BOOST_CHECK(cvec == gather(vec));
+  BOOST_CHECK(cvec == gather(std::move(vec)));
+  BOOST_CHECK(cvec == gather(cvec));
+  BOOST_CHECK(cvec == gather(std::move(cvec)));
+}
+
 BOOST_AUTO_TEST_CASE(visit_empty_range) {
   const std::vector<Point> vec;
   const std::vector<SomeType> expected{};

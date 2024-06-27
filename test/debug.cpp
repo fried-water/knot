@@ -59,6 +59,10 @@ BOOST_AUTO_TEST_CASE(debug_range_types) {
   // Skipping unordered containers since order won't be consistent across platforms
 }
 
+BOOST_AUTO_TEST_CASE(debug_vec_bool) {
+  BOOST_CHECK_EQUAL("[2; false, true]", knot::debug(std::vector<bool>{false, true}));
+}
+
 BOOST_AUTO_TEST_CASE(debug_variant) {
   BOOST_CHECK_EQUAL("5", knot::debug(std::variant<int, Point, std::vector<std::string>>(5)));
   BOOST_CHECK_EQUAL("(45, 89)", knot::debug(std::variant<int, Point, std::vector<std::string>>(Point{45, 89})));

@@ -59,7 +59,9 @@ void visit(T&& t, Visitor visitor) {
     if (static_cast<bool>(t)) try_visit(*std::forward<T>(t));
   } else if constexpr (category(type) == TypeCategory::Range) {
     for (auto&& val : t) {
-      if constexpr (is_ref(Type<T>{})) {
+      if constexpr (decay(Type<decltype(val)>{}) != value_type(type)) {
+        try_visit(construct(value_type(type), std::move(val)));
+      } else if constexpr (is_ref(Type<T>{})) {
         try_visit(val);
       } else {
         try_visit(std::move(val));

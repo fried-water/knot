@@ -82,9 +82,9 @@ constexpr auto tail(TypeList<T, Ts...>) {
 
 template <typename... T1s, typename... T2s>
 constexpr bool operator==(TypeList<T1s...> lhs, TypeList<T2s...> rhs) {
-  if constexpr(size(lhs) != size(rhs)) {
+  if constexpr (size(lhs) != size(rhs)) {
     return false;
-  } else if constexpr(size(lhs) == 0) {
+  } else if constexpr (size(lhs) == 0) {
     return true;
   } else {
     return head(lhs) == head(rhs) && tail(lhs) == tail(rhs);
@@ -272,6 +272,11 @@ constexpr auto as_typelist(Type<T> t) {
 template <typename... Ts>
 constexpr auto as_typelist(Type<std::variant<Ts...>> t) {
   return TypeList<Ts...>{};
+}
+
+template <typename T, typename... Us>
+T construct(Type<T>, Us&&... values) {
+  return T{std::forward<Us>(values)...};
 }
 
 }  // namespace knot

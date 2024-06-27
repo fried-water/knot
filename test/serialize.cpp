@@ -110,6 +110,15 @@ BOOST_AUTO_TEST_CASE(serialize_range) {
   BOOST_CHECK(vec == knot::deserialize<std::vector<int>>(bytes.begin(), bytes.end()));
 }
 
+BOOST_AUTO_TEST_CASE(serialize_vec_bool) {
+  const std::vector<bool> vec{true, false, true};
+  const std::vector<std::byte> bytes = knot::serialize(vec);
+  const auto expected = as_bytes({3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1});
+  BOOST_CHECK(expected == bytes);
+
+  BOOST_CHECK(vec == knot::deserialize<std::vector<bool>>(bytes.begin(), bytes.end()));
+}
+
 BOOST_AUTO_TEST_CASE(serialize_empty_range) {
   const std::vector<int> vec;
   const std::vector<std::byte> bytes = knot::serialize(vec);
